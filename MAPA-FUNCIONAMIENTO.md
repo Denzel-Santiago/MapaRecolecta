@@ -13,7 +13,7 @@ El proyecto está construido con:
 
 ## Vistas principales
 
-La aplicación tiene dos pantallas o vistas:
+La aplicación tiene dos pantallas o vistas principales:
 
 1. **Diseñador de rutas** (`src/components/MapaDiseñador.tsx`)
 2. **Monitoreo de ruta** (`src/components/MapaMonitoreo.tsx`)
@@ -29,61 +29,72 @@ La navegación entre ambas se controla desde `src/App.tsx`.
   - `Deshacer`: eliminar el último punto agregado.
   - `Limpiar`: borrar toda la ruta.
   - `Ir a Monitoreo`: guardar la ruta actual y pasar a la vista de monitoreo.
-- La ruta se guarda en el estado de la aplicación (`App.tsx`) como `rutaActual`.
+- La ruta se guarda en el estado de la aplicación (`App.tsx`) y además se persiste en `localStorage` para restaurarla tras recargas.
 - Solo se puede ir a la vista de monitoreo si hay al menos 2 puntos.
 
 ## Cómo funciona la vista de monitoreo
 
 - Recibe la ruta creada en el diseñador como una lista de coordenadas.
-- Centra el mapa en Suchiapa de nuevo.
-- Si la ruta tiene al menos 2 puntos, inicia una animación automática:
-  - Cada segundo avanza el "camión" al siguiente punto de la ruta.
-  - El camión se desplaza actualizando su posición en el estado.
-- Se dibuja:
-  - Una línea gris con toda la ruta prevista.
-  - Una línea verde con el tramo ya recorrido.
-  - Marcadores circulares que cambian de gris a verde según estén recorridos.
-- El marcador del camión utiliza un ícono de camión basado en el estado del primer camión definido en `src/data/DatosFalsos.tsx`.
-- Desde aquí también se puede regresar al diseñador.
+- Centra el mapa en la zona objetivo (Suchiapa).
+- Si la ruta tiene al menos 2 puntos, inicia la animación de los camiones:
+  - Soporte para **múltiples camiones**: la app puede simular una flota y escoger el camión a mostrar.
+  - La posición del/los camión(es) se actualiza(n) periódicamente según una configuración de velocidad/intervalo; esto es configurable vía `monitoreoService` o el estado del camión.
+  - Se dibuja una línea gris con toda la ruta prevista y una línea verde con el tramo recorrido.
+  - Los marcadores de puntos cambian de estado visual (por ejemplo, de gris a verde) según sean recorridos.
+- El ícono del camión se selecciona a partir de los datos en `src/data/DatosFalsos.tsx` (o de la lista de camiones en estado).
+- Desde la vista de monitoreo se puede pausar, reiniciar y regresar al diseñador.
 
-## Datos y modelos actuales
+## Datos, modelos y arquitectura interna
 
-- `src/data/DatosFalsos.tsx` contiene una lista de camiones simulada (`listaCamiones`).
-- Los camiones tienen campos como `id`, `nombre`, `estado`, `posicionActual` y `velocidad`.
-- El componente de monitoreo solo usa el estado del primer camión para seleccionar el ícono.
-- `src/models/ModelosMapa.tsx` define clases de dominio: `Ruta`, `PuntoRecoleccion` y `Camion`, pero actualmente no se usan en la lógica del mapa.
+- `src/data/DatosFalsos.tsx` contiene datos de ejemplo de la flota (`listaCamiones`) usados para la selección de íconos y estados.
+- `src/models/ModelosMapa.tsx` define las entidades y tipos: `Ruta`, `PuntoRecoleccion` y `Camion`. Estas clases/tipos se usan ahora en el flujo para garantizar tipado consistente.
+- La lógica del diseñador y del monitoreo está separada en:
+  - Hooks: `src/hooks/useRutaDiseñador.ts`, `src/hooks/useMonitoreo.ts` — encapsulan manejo de estado y efectos.
+  - Servicios: `src/services/rutaService.ts`, `src/services/monitoreoService.ts` — encapsulan persistencia (local) y utilidades de animación/intervalos.
 
-## Limitaciones y estado actual
+## Persistencia y comportamiento del estado
 
-- La ruta no se guarda en una base de datos ni se persiste entre recargas.
-- No hay integración con backend ni API de mapas externos más allá de OpenStreetMap.
-- El movimiento del camión es simulado con un intervalo de 1 segundo y avanza por los puntos de la ruta.
-- No hay control de velocidad real ni cálculos de distancia/timings.
-- El componente de datos de camiones es estático y se usa solo parcialmente para el ícono.
+- La ruta actual se guarda en `localStorage` cuando se crea o se modifica, y se restaura al iniciar la aplicación.
+- Los datos de camiones de `DatosFalsos` son ejemplo; para producción se recomienda reemplazarlos por API/servicios remotos.
 
-## Resumen de la funcionalidad actual
+## Animación y velocidad
 
-- `App.tsx` gestiona la vista activa y la ruta compartida.
-- `MapaDiseñador.tsx` permite dibujar rutas con clics y pasar esa ruta a monitoreo.
-- `MapaMonitoreo.tsx` muestra el progreso de la ruta y anima un camión sobre ella.
-- `DatosFalsos.tsx` provee ejemplos de camiones y estados.
-- `ModelosMapa.tsx` declara modelos, pero no forma parte del flujo activo actual.
+- La animación del camión ya no está limitada a un tick fijo de 1 segundo: la velocidad es configurable y puede controlarse desde el estado del camión o desde `monitoreoService`.
+- En la implementación actual el camión avanza de punto a punto; para movimientos más suaves se puede implementar interpolación entre coordenadas (próxima mejora sugerida).
+
+## Limitaciones actuales
+
+- La persistencia es local (`localStorage`) y no sustituye una base de datos en servidor.
+- La simulación de camiones es local y no sincronizada con un backend en tiempo real.
+- No hay cálculo avanzado de rutas (distancia/tiempo real) ni optimización de recorridos.
+
+## Resumen de la funcionalidad
+
+- `App.tsx` gestiona la vista activa, la ruta compartida y la restauración desde `localStorage`.
+- `MapaDiseñador.tsx` permite dibujar y editar rutas; usa `useRutaDiseñador`.
+- `MapaMonitoreo.tsx` muestra el avance de la ruta con soporte para múltiples camiones; usa `useMonitoreo`.
+- `DatosFalsos.tsx` contiene ejemplos de camiones e íconos.
+- `ModelosMapa.tsx` define los modelos de dominio y se usa para tipado.
 
 ## Archivos clave
 
 - `src/App.tsx`
 - `src/components/MapaDiseñador.tsx`
 - `src/components/MapaMonitoreo.tsx`
+- `src/hooks/useRutaDiseñador.ts`
+- `src/hooks/useMonitoreo.ts`
+- `src/services/rutaService.ts`
+- `src/services/monitoreoService.ts`
 - `src/data/DatosFalsos.tsx`
 - `src/models/ModelosMapa.tsx`
 
-## Uso actual
+## Uso
 
 1. Ejecutar el proyecto con `npm install` y `npm run dev`.
-2. En la vista de diseñador, hacer clic sobre el mapa para crear una ruta.
-3. Pulsar `Ir a Monitoreo` para ver el avance simulado del camión.
-4. Regresar al diseñador para modificar o crear otra ruta.
+2. En la vista de diseñador, hacer clic sobre el mapa para crear una ruta (mínimo 2 puntos).
+3. Pulsar `Ir a Monitoreo` para iniciar la simulación; ajustar la velocidad si se desea.
+4. Regresar al diseñador para modificar o crear otra ruta; la ruta persistirá en `localStorage`.
 
 ---
 
-Este documento describe el comportamiento actual del mapa y su funcionamiento dentro de la aplicación `Mapa Recolecta`.
+Este documento describe el comportamiento actualizado del mapa y las mejoras implementadas en la aplicación `Mapa Recolecta`.
