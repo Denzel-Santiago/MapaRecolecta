@@ -1,40 +1,48 @@
 # Mapa Recolecta (Suchiapa, Chiapas)
 
-Aplicación web desarrollada con **React + TypeScript + Vite** para visualizar un **mapa interactivo** enfocado en la planeación y representación de rutas de recolección de basura en **Suchiapa, Chiapas**.
+Aplicación web desarrollada con **React + TypeScript + Vite** para visualizar un **mapa interactivo** enfocado en la planeación y representación de rutas de recolección en Suchiapa, Chiapas.
 
-Este proyecto es la base para un sistema de rutas donde se podrán dibujar recorridos, gestionar puntos clave y posteriormente integrar validación de rutas y control operativo.
-
-Este proyecto esta relacionado con otro en construccion actualmente un sistema de gestion de rutas
+Este repositorio contiene mejoras y refactorizaciones del prototipo inicial: soporte para múltiples camiones, movimiento de camiones con velocidad configurable, persistencia local de rutas, y una separación más clara entre hooks, servicios y modelos.
 
 ---
 
 ## Introducción
 
-**Mapa Recolecta** es un proyecto frontend construido con React y Leaflet que permite mostrar un mapa centrado en Suchiapa, Chiapas, y dibujar rutas mediante polilíneas.
+`Mapa Recolecta` es un frontend construido con React y Leaflet que permite dibujar rutas en un mapa, simular el avance de camiones por la ruta y monitorizar el progreso. Está pensado como prototipo para integrar luego APIs y persistencia en servidor.
 
-La aplicación está pensada como un prototipo inicial para el desarrollo de un sistema completo de control y seguimiento de rutas de recolección de basura.
+---
+
+## Novedades y mejoras (actualizadas)
+
+- **Múltiples camiones**: ahora la aplicación soporta una flota y la selección de ícono por camión.
+- **Velocidad configurable**: la animación del camión puede ajustarse (velocidad/intervalo) desde el estado o `monitoreoService`.
+- **Persistencia local**: la ruta actual se guarda en `localStorage` y se restaura al recargar la página.
+- **Refactor a hooks y servicios**: lógica de monitoreo y diseñador extraída a `useMonitoreo`, `useRutaDiseñador` y servicios en `src/services`.
+- **Modelos reutilizados**: `src/models/ModelosMapa.tsx` ahora se usa para tipado y entidades (`Ruta`, `PuntoRecoleccion`, `Camion`).
+- **Mejoras UI/UX**: botones `Deshacer`, `Limpiar`, `Ir a Monitoreo`, estado de botones (habilitado/deshabilitado) y estilos responsive.
+- **Estructura modular**: componentes, hooks, servicios y constantes organizados para facilitar integración futura con backend.
 
 ---
 
 ## Características Principales
 
 - Visualización de mapa interactivo (OpenStreetMap)
-- Mapa centrado en Suchiapa, Chiapas
-- Pintado de rutas mediante Polyline
-- Arquitectura modular basada en componentes
-- Proyecto preparado para escalabilidad (rutas, puntos, camiones, validaciones)
-- Compatible con React + Vite (SPA)
+- Diseñador de rutas con clics y `Polyline`
+- Monitorización con animación de camiones y trazado de tramo recorrido
+- Persistencia local de rutas (`localStorage`)
+- Soporte para múltiples camiones y selección de íconos
+- Hooks y servicios para separar lógica de UI
 
 ---
 
 ## Arquitectura
 
-El proyecto sigue una arquitectura **SPA (Single Page Application)** basada en componentes.
+Arquitectura **SPA (Single Page Application)** basada en componentes con separación de responsabilidades:
 
-- Frontend desacoplado
-- Basado en componentes reutilizables
-- Estructura modular por funcionalidades (feature-based)
-- Preparado para futura integración con backend (API REST o WebSocket)
+- `src/components`: UI del diseñador y monitoreo
+- `src/hooks`: hooks reutilizables (`useMonitoreo`, `useRutaDiseñador`)
+- `src/services`: lógica de negocio y utilidades (`monitoreoService`, `rutaService`)
+- `src/models`: entidades y tipos (`ModelosMapa.tsx`)
 
 ---
 
@@ -50,9 +58,6 @@ El proyecto sigue una arquitectura **SPA (Single Page Application)** basada en c
 - React Leaflet
 - OpenStreetMap (tiles)
 
-### Linting
-- ESLint
-
 ---
 
 ## Requisitos
@@ -62,37 +67,51 @@ El proyecto sigue una arquitectura **SPA (Single Page Application)** basada en c
 
 ---
 
-## Instalación
+## Instalación y ejecución
 
-### 1) Clonar repositorio
+1) Clonar repositorio
+
 ```bash
-git clone <https://github.com/Denzel-Santiago/MapaRecolecta.git>
+git clone https://github.com/Denzel-Santiago/MapaRecolecta.git
+```
 
-### 2) Entrar a la carpeta
-  cd Mapa-Rec
-### 3) Instalar dependencias
-  npm install
-### 4) Ejecutar el proyecto
-  npm run dev
+2) Entrar a la carpeta
 
-### El proyecto se abrirá normalmente en:
+```bash
+cd Mapa-Rec
+```
 
-http://localhost:
+3) Instalar dependencias
 
-Estructura del Proyecto
+```bash
+npm install
+```
+
+4) Ejecutar en desarrollo
+
+```bash
+npm run dev
+```
+
+El proyecto se abrirá normalmente en `http://localhost:5173` (o el puerto que indique Vite).
+
+---
+
+## Estructura del Proyecto (resumen)
+
 Mapa-Rec/
 │
 ├── public/                      # Archivos públicos estáticos
 │
 ├── src/
 │   ├── assets/                  # Imágenes, íconos, etc.
-│   │
-│   ├── components/              # Componentes reutilizables
-│   │   └── MapaRutas.tsx        # Componente principal del mapa
-│   │
+│   ├── components/              # Componentes UI (`MapaDiseñador`, `MapaMonitoreo`)
+│   ├── hooks/                   # Hooks (`useMonitoreo`, `useRutaDiseñador`)
+│   ├── services/                # Servicios (`monitoreoService`, `rutaService`)
+│   ├── models/                  # Modelos y tipos (`ModelosMapa.tsx`)
+│   ├── data/                    # Datos de ejemplo (`DatosFalsos.tsx`)
 │   ├── App.tsx                  # Componente raíz
-│   ├── main.tsx                 # Entrada principal
-│   └── index.css                # Estilos globales
+│   └── main.tsx                 # Entrada principal
 │
 ├── .gitignore
 ├── eslint.config.js
@@ -101,50 +120,30 @@ Mapa-Rec/
 ├── package-lock.json
 └── README.md
 
+---
 
 ## Configuración del Mapa
 
-## El mapa utiliza tiles de OpenStreetMap o CartoDB (dependiendo de configuración).
+Ejemplo de `TileLayer` usado por defecto:
 
- # Ejemplo de TileLayer:
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-### Seguridad
+```tsx
+<TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+```
 
-Actualmente el proyecto:
+---
 
-    No expone credenciales
+## Buenas prácticas y recomendaciones
 
-    No utiliza llaves de Google Maps
+- Para producción, externalizar configuración en `.env` y no subir variables sensibles.
+- Añadir autenticación y un backend para persistencia en servidor.
+- Usar HTTPS en despliegues y considerar despliegues en contenedores o servicios estáticos.
 
-    No requiere variables de entorno
+---
 
-    No almacena datos sensibles
+## Scripts disponibles
 
-### Recomendaciones si se escala a producción:
-
-      Usar variables de entorno (.env)
-
-      No subir archivos .env al repositorio
-
-      Integrar autenticación (JWT / OAuth)
-
-      Desplegar con HTTPS
-
-### Notas Adicionales
-      #Posibles despliegues
-
-          El proyecto puede desplegarse en:
-
-          Servidores Linux
-
-          Docker (futuro)
-
-          ## Scripts Disponibles
-
-- npm run dev → Ejecuta en desarrollo
-- npm run build → Genera build de producción
-- npm run preview → Previsualiza build
-- npm run lint → Ejecuta ESLint
+- `npm run dev` → Ejecuta en desarrollo
+- `npm run build` → Genera build de producción
+- `npm run preview` → Previsualiza build
+- `npm run lint` → Ejecuta ESLint
 
