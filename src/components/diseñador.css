@@ -1,0 +1,21 @@
+button, input, select { font: inherit; }
+button { cursor: pointer; padding: 7px 10px; border: 1px solid #c5cdc7; border-radius: 7px; background: #fff; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+.boton-primario { color: #fff; border-color: #287a47; background: #287a47; }
+.boton-peligro { color: #a21d1d; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 20px; background: rgba(18, 28, 22, .58); }
+.modal-card { width: min(440px, 100%); padding: 24px; border-radius: 14px; background: #fff; box-shadow: 0 18px 50px rgba(0,0,0,.25); }
+.modal-card h2 { margin-bottom: 18px; }
+.opciones-camion { display: grid; gap: 12px; margin-bottom: 20px; }
+.opciones-camion label { display: flex; gap: 10px; padding: 10px; border: 1px solid #dce3de; border-radius: 8px; }
+.ruta-form { display: grid; gap: 13px; }
+.ruta-form label { display: grid; gap: 5px; font-weight: 600; }
+.ruta-form input, .ruta-form select { width: 100%; padding: 9px; border: 1px solid #bdc8c0; border-radius: 7px; }
+.acciones-modal { display: flex; justify-content: flex-end; gap: 8px; margin-top: 7px; }
+.panel-diseñador { position: absolute; z-index: 999; top: 14px; left: 14px; width: 280px; padding: 14px; border-radius: 12px; background: #fff; box-shadow: 0 5px 18px rgba(0,0,0,.14); }
+.panel-diseñador .acciones { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.resumen-rutas { position: absolute; z-index: 999; top: 14px; right: 14px; width: min(340px, calc(100% - 28px)); max-height: calc(100vh - 28px); overflow: auto; padding: 14px; border-radius: 12px; background: #fff; box-shadow: 0 5px 18px rgba(0,0,0,.14); }
+.ruta-resumen { display: grid; gap: 4px; margin-top: 10px; padding: 10px; border: 1px solid #dce3de; border-radius: 9px; }
+.ruta-resumen span { font-size: .88rem; color: #48534b; }
+.ruta-resumen div { display: flex; gap: 6px; margin-top: 5px; }
+@media (max-width: 760px) { .resumen-rutas { top: auto; bottom: 14px; max-height: 38vh; } }
