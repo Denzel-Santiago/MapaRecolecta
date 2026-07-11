@@ -27,9 +27,13 @@ function ClickParaPuntos({
 export default function MapaDiseñadorView({
   puntos,
   onAddPoint,
+  onEditPoint,
+  puedeDibujar,
 }: {
   puntos: Coordenada[];
   onAddPoint: (punto: Coordenada) => void;
+  onEditPoint: (indice: number, punto: Coordenada) => void;
+  puedeDibujar: boolean;
 }) {
   return (
     <MapContainer
@@ -46,10 +50,13 @@ export default function MapaDiseñadorView({
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      <ClickParaPuntos onAddPoint={onAddPoint} />
+      {puedeDibujar && <ClickParaPuntos onAddPoint={onAddPoint} />}
 
       {puntos.map((punto, index) => (
-        <Marker key={index} position={punto} />
+        <Marker key={index} position={punto} draggable={puedeDibujar} eventHandlers={{ dragend: (event) => {
+          const posicion = event.target.getLatLng();
+          onEditPoint(index, [posicion.lat, posicion.lng]);
+        } }} />
       ))}
 
       {puntos.length >= 2 && <Polyline positions={puntos} />}
