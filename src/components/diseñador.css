@@ -1,4 +1,4 @@
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { cursor: pointer; padding: 7px 10px; border: 1px solid #c5cdc7; border-radius: 7px; background: #fff; }
 button:disabled { cursor: not-allowed; opacity: .55; }
 .boton-primario { color: #fff; border-color: #287a47; background: #287a47; }
@@ -10,7 +10,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .opciones-camion label { display: flex; gap: 10px; padding: 10px; border: 1px solid #dce3de; border-radius: 8px; }
 .ruta-form { display: grid; gap: 13px; }
 .ruta-form label { display: grid; gap: 5px; font-weight: 600; }
-.ruta-form input, .ruta-form select { width: 100%; padding: 9px; border: 1px solid #bdc8c0; border-radius: 7px; }
+.ruta-form input, .ruta-form select, .ruta-form textarea { width: 100%; padding: 9px; border: 1px solid #bdc8c0; border-radius: 7px; }
+.ruta-form textarea { min-height: 92px; resize: vertical; }
 .acciones-modal { display: flex; justify-content: flex-end; gap: 8px; margin-top: 7px; }
 .panel-diseñador { position: absolute; z-index: 999; top: 14px; left: 14px; width: 280px; padding: 14px; border-radius: 12px; background: #fff; box-shadow: 0 5px 18px rgba(0,0,0,.14); }
 .panel-diseñador .acciones { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
