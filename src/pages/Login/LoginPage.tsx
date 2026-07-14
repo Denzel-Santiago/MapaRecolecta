@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
-import { canAccessDesigner, login, type AuthSession } from "../services/authService";
-import "./login.css";
+import { canAccessDesigner, login, type AuthSession } from "../../services/authService";
+import "./LoginPage.css";
 
-export default function Login({ onAuthenticated }: { onAuthenticated: (session: AuthSession) => void }) {
+export default function LoginPage({ onAuthenticated }: { onAuthenticated: (session: AuthSession) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
