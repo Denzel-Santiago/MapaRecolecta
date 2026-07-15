@@ -30,6 +30,59 @@ function getErrorMessage(payload: ApiErrorPayload, fallback: string): string {
   return payload.message ?? fallback;
 }
 
+function messageFromHtmlOrText(body: string, status: number, statusText: string): string {
+  const trimmed = body.trim();
+  const fallback = `${status} ${statusText}`;
+
+  if (!trimmed) {
+    return fallback;
+  }
+
+  const lower = trimmed.toLowerCase();
+
+  if (
+    lower.includes("ngrok") ||
+    lower.includes("err_ngrok") ||
+    lower.includes("visit site") ||
+    lower.includes("ngrok-skip-browser-warning")
+  ) {
+    return (
+      "El tunel ngrok bloqueo la peticion (403). " +
+      "Usa el proxy Vite: VITE_API_URL vacio y VITE_API_PROXY_TARGET=https://TU.ngrok-free.app"
+    );
+  }
+
+  if (lower.includes("blocked request") && lower.includes("host")) {
+    return (
+      "Vite bloqueo el Host de la peticion. " +
+      "Revisa server.allowedHosts en vite.config.ts."
+    );
+  }
+
+  if (trimmed.startsWith("<!") || trimmed.startsWith("<html")) {
+    return `${fallback}: el servidor devolvio HTML en lugar de JSON de la API.`;
+  }
+
+  const singleLine = trimmed.replace(/\s+/g, " ").slice(0, 180);
+  return singleLine || fallback;
+}
+
+async function readErrorMessage(response: Response): Promise<string> {
+  const fallback = `${response.status} ${response.statusText}`;
+  const body = await response.text();
+
+  if (!body.trim()) {
+    return fallback;
+  }
+
+  try {
+    const payload = JSON.parse(body) as ApiErrorPayload;
+    return getErrorMessage(payload, fallback);
+  } catch {
+    return messageFromHtmlOrText(body, response.status, response.statusText);
+  }
+}
+
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -44,16 +97,7 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   });
 
   if (!response.ok) {
-    let message = `${response.status} ${response.statusText}`;
-
-    try {
-      const payload = (await response.json()) as ApiErrorPayload;
-      message = getErrorMessage(payload, message);
-    } catch {
-      // Mantiene el mismo fallback de recolecta-web cuando el backend no envia JSON.
-    }
-
-    throw new Error(message);
+    throw new Error(await readErrorMessage(response));
   }
 
   if (response.status === 204) {

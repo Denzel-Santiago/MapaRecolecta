@@ -95,6 +95,35 @@ npm run dev
 
 El proyecto se abrirá normalmente en `http://localhost:5173` (o el puerto que indique Vite).
 
+5) Configurar la API (desarrollo)
+
+```bash
+cp .env.example .env
+```
+
+Por defecto el `.env` deja `VITE_API_URL` vacío y apunta el proxy a `http://localhost:8081` (Gin publicado por Docker de `recolecta_web` con `BACKEND_PORT=8081`).
+
+---
+
+## Conexión con la API
+
+En desarrollo el patrón correcto es **mismo origen + proxy de Vite** (evita CORS y el 403 HTML de ngrok free):
+
+1. El navegador llama a `http://localhost:5173/api/...`
+2. Vite reenvía `/api` a `VITE_API_PROXY_TARGET` (Gin en `localhost:8081`)
+3. Login: `POST /api/empleados/login` con body `{"email","password"}` y `Content-Type: application/json`
+
+Variables en `.env` / `.env.example`:
+
+| Variable | Uso |
+|----------|-----|
+| `VITE_API_URL` | Base URL del cliente. En local: vacío. |
+| `VITE_API_PROXY_TARGET` | Destino del proxy Vite. Local: `http://localhost:8081`. |
+
+**No** pongas la URL de ngrok en `VITE_API_URL`: el navegador haría petición cross-origin y ngrok free puede responder 403 (página “Visit Site”) en lugar de Gin. Ngrok sirve para clientes externos (p. ej. Swagger); MapaRecolecta en local debe usar el proxy a `:8081`.
+
+El login de Gin responde `200` / `400` / `401`. Un `403` casi siempre viene de otro hop (ngrok, host bloqueado), no del endpoint de login.
+
 ---
 
 ## Estructura del Proyecto (resumen)
@@ -134,8 +163,8 @@ Ejemplo de `TileLayer` usado por defecto:
 
 ## Buenas prácticas y recomendaciones
 
-- Para producción, externalizar configuración en `.env` y no subir variables sensibles.
-- Añadir autenticación y un backend para persistencia en servidor.
+- Copiar `.env.example` a `.env` y no subir `.env` (ya está en `.gitignore`).
+- En local, preferir proxy Vite → `localhost:8081` frente a llamar ngrok desde el navegador.
 - Usar HTTPS en despliegues y considerar despliegues en contenedores o servicios estáticos.
 
 ---

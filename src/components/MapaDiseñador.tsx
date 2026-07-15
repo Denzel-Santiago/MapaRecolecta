@@ -7,6 +7,7 @@ import { useRutaDiseñador } from "../hooks/useRutaDiseñador";
 import type { DatosRutaForm, RutaDiseñada } from "../models/rutaDiseñada";
 import { puntosRutaACoordenadas } from "../models/rutaDiseñada";
 import { crearRutaDiseñada } from "../services/rutaService";
+import { guardarRuta as guardarRutaApi } from "../services/rutasApi";
 import "./diseñador.css";
 
 export default function MapaDiseñador({ rutas, obtenerRutaPorCamion, guardarRuta, eliminarRuta, irAMonitoreo }: {
@@ -32,11 +33,35 @@ export default function MapaDiseñador({ rutas, obtenerRutaPorCamion, guardarRut
     reemplazarPuntos(puntosRutaACoordenadas(ruta.puntos));
   };
   const ver = (ruta: RutaDiseñada) => reemplazarPuntos(puntosRutaACoordenadas(ruta.puntos));
-  const guardar = (datos: DatosRutaForm) => {
+  const guardar = async (datos: DatosRutaForm) => {
     if (camionId === null) return;
+
     const existente = obtenerRutaPorCamion(camionId);
-    if (existente && existente !== rutaEditada && !window.confirm(`El Camión ${camionId} ya tiene una ruta asignada.\n\n¿Desea reemplazarla?`)) return;
-    guardarRuta(crearRutaDiseñada(camionId, datos, puntos));
+    if (
+      existente &&
+      existente !== rutaEditada &&
+      !window.confirm(`El Camión ${camionId} ya tiene una ruta asignada.\n\n¿Desea reemplazarla?`)
+    ) {
+      return;
+    }
+
+    const rutaLocal = crearRutaDiseñada(camionId, datos, puntos);
+
+    console.group("[MapaDiseñador] Guardar ruta");
+    console.log("camionId:", camionId);
+    console.log("datos formulario:", datos);
+    console.log("puntos del mapa:", puntos);
+    console.log("rutaDiseñada local:", rutaLocal);
+    console.groupEnd();
+
+    const respuesta = await guardarRutaApi(rutaLocal);
+
+    console.log("[MapaDiseñador] ruta_id recibido:", respuesta.data?.ruta_id);
+
+    guardarRuta({
+      ...rutaLocal,
+      ruta_id: respuesta.data.ruta_id,
+    });
     setMostrarFormulario(false);
     setRutaEditada(undefined);
   };
