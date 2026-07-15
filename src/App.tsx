@@ -1,32 +1,17 @@
-import './App.css'
-import { useState } from 'react'
-import MapaDiseñador from './components/MapaDiseñador'
-import MapaMonitoreo from './components/MapaMonitoreo'
+import { useState } from "react";
+import "./App.css";
+import ProtectedRoute from "./components/ProtectedRoute";
+import LoginPage from "./pages/Login/LoginPage";
+import MapaPage from "./pages/Mapa/MapaPage";
+import { getAuthSession, type AuthSession } from "./services/authService";
 
 function App() {
-
-  const [vistaActual, setVistaActual] = useState<"diseñador" | "monitoreo">("diseñador")
-
-  // 🔥 Ruta compartida entre vistas
-  const [rutaActual, setRutaActual] = useState<[number, number][]>([])
+  const [session, setSession] = useState<AuthSession | null>(() => getAuthSession());
 
   return (
-    <>
-      {vistaActual === "diseñador" && (
-        <MapaDiseñador
-          cambiarVista={() => setVistaActual("monitoreo")}
-          guardarRuta={(ruta) => setRutaActual(ruta)}
-        />
-      )}
-
-      {vistaActual === "monitoreo" && (
-        <MapaMonitoreo
-          regresar={() => setVistaActual("diseñador")}
-          ruta={rutaActual}
-        />
-      )}
-    </>
-  )
+    <ProtectedRoute session={session} fallback={<LoginPage onAuthenticated={setSession} />}>
+      <MapaPage onLogout={() => setSession(null)} />
+    </ProtectedRoute>
+  );
 }
-
-export default App
+export default App;

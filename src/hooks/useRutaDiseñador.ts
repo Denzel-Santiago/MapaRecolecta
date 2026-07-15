@@ -28,6 +28,13 @@ export function useRutaDiseñador(initialRuta: Coordenada[] = []) {
     setPuntos([]);
   }, []);
 
+  const reemplazarPuntos = useCallback((ruta: Coordenada[]) => { setError(null); setPuntos(ruta); }, []);
+  const editarPunto = useCallback((indice: number, punto: Coordenada) => {
+    if (!estaDentroDeSuchiapa(punto)) { setError("El punto se encuentra fuera de los límites de Suchiapa."); return; }
+    setError(null);
+    setPuntos((prev) => prev.map((actual, posicion) => posicion === indice ? punto : actual));
+  }, []);
+
   const puedeGuardar = puntos.length >= MIN_ROUTE_POINTS;
 
   return {
@@ -36,6 +43,8 @@ export function useRutaDiseñador(initialRuta: Coordenada[] = []) {
     agregarPunto,
     deshacerUltimo,
     limpiarRuta,
+    reemplazarPuntos,
+    editarPunto,
     puedeGuardar,
   };
 }

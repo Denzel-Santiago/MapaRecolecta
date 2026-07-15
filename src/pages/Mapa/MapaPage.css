@@ -1,0 +1,32 @@
+.mapa-page {
+  min-height: 100vh;
+  position: relative;
+}
+
+.session-bar {
+  align-items: center;
+  background: #17231c;
+  color: #fff;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  min-height: 46px;
+  padding: 8px 14px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 100%;
+  z-index: 1100;
+}
+
+.session-bar button {
+  background: #ffffff;
+  border: 0;
+  border-radius: 8px;
+  color: #17231c;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  min-height: 32px;
+  padding: 0 12px;
+}
