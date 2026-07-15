@@ -48,8 +48,7 @@ function messageFromHtmlOrText(body: string, status: number, statusText: string)
   ) {
     return (
       "El tunel ngrok bloqueo la peticion (403). " +
-      "En desarrollo local usa el proxy Vite hacia http://localhost:8081 " +
-      "(VITE_API_URL vacio y VITE_API_PROXY_TARGET=http://localhost:8081)."
+      "Usa el proxy Vite: VITE_API_URL vacio y VITE_API_PROXY_TARGET=https://TU.ngrok-free.app"
     );
   }
 
