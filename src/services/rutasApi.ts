@@ -42,8 +42,31 @@ export function construirRutaBackend(ruta: RutaDiseñada): CrearRutaRequest {
 }
 
 export async function guardarRuta(ruta: RutaDiseñada): Promise<CrearRutaResponse> {
-  return apiRequest<CrearRutaResponse>("/api/rutas/", {
-    method: "POST",
-    body: JSON.stringify(construirRutaBackend(ruta)),
-  });
+  const payload = construirRutaBackend(ruta);
+  const body = JSON.stringify(payload);
+
+  console.group("[rutasApi] POST /api/rutas/");
+  console.log("ruta local (antes de mapear):", ruta);
+  console.log("JSON enviado (objeto):", payload);
+  console.log("JSON enviado (string):", body);
+  console.log("puntos en json_ruta:", payload.json_ruta.length);
+  console.groupEnd();
+
+  try {
+    const respuesta = await apiRequest<CrearRutaResponse>("/api/rutas/", {
+      method: "POST",
+      body,
+    });
+
+    console.group("[rutasApi] respuesta OK");
+    console.log(respuesta);
+    console.groupEnd();
+
+    return respuesta;
+  } catch (error) {
+    console.group("[rutasApi] error al guardar");
+    console.error(error);
+    console.groupEnd();
+    throw error;
+  }
 }
