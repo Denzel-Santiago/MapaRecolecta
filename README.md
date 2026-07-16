@@ -18,13 +18,16 @@ npm install
 
 ## Configuracion de entorno
 
-El proyecto lee variables Vite desde un archivo `.env` ubicado en la raiz de este proyecto:
+El proyecto mantiene dos archivos de entorno versionables:
 
 ```txt
-Mapa/Mapa-Rec/.env
+.env.example
+.env.development
 ```
 
-Este archivo no debe subirse al repositorio. Usa el ejemplo incluido:
+`.env.example` documenta desarrollo y produccion. `.env.development` se usa para desarrollo y pruebas con Vite.
+
+Si necesitas variables locales propias, crea un `.env` en la raiz del proyecto a partir del ejemplo. Ese archivo no debe subirse al repositorio:
 
 ```bash
 cp .env.example .env
@@ -33,25 +36,46 @@ cp .env.example .env
 Configuracion recomendada para desarrollo local:
 
 ```env
+ALLOW_ALL_HOSTS=true
+ALLOWED_HOSTS=
+API_PROXY_TARGET=http://localhost:8081
 VITE_API_URL=
-VITE_API_PROXY_TARGET=http://localhost:8081
+VITE_API_PROXY_TARGET=
 ```
+
+Produccion:
+
+```env
+ALLOW_ALL_HOSTS=false
+ALLOWED_HOSTS=frontend.example.com,www.example.com
+API_PROXY_TARGET=http://localhost:8081
+VITE_API_URL=
+VITE_API_PROXY_TARGET=
+```
+
+`ALLOWED_HOSTS` debe contener solo hosts separados por comas, sin `https://`, rutas ni diagonales finales.
 
 Si el backend corre en `8080`, usa:
 
 ```env
 VITE_API_URL=
-VITE_API_PROXY_TARGET=http://localhost:8080
+API_PROXY_TARGET=http://localhost:8080
 ```
 
 Si usas ngrok:
 
 ```env
 VITE_API_URL=
-VITE_API_PROXY_TARGET=https://TU-SUBDOMINIO.ngrok-free.app
+API_PROXY_TARGET=https://TU-SUBDOMINIO.ngrok-free.app
 ```
 
-La recomendacion es dejar `VITE_API_URL` vacio en desarrollo para que el navegador llame a rutas relativas como `/api/empleados/login`. Vite reenvia esas llamadas al backend usando `VITE_API_PROXY_TARGET`. Esto evita errores CORS cuando el frontend corre en `localhost:5173` y la API esta en otro origen.
+La recomendacion es dejar `VITE_API_URL` vacio en desarrollo para que el navegador llame a rutas relativas como `/api/empleados/login`. Vite reenvia esas llamadas al backend usando `API_PROXY_TARGET`. Esto evita errores CORS cuando el frontend corre en `localhost:5173` y la API esta en otro origen.
+
+El proxy conserva compatibilidad con variables anteriores. La prioridad es:
+
+```txt
+API_PROXY_TARGET -> VITE_API_PROXY_TARGET -> VITE_API_URL -> http://localhost:8081
+```
 
 Solo usa llamada directa si el backend tiene CORS correctamente configurado:
 
@@ -85,10 +109,12 @@ vite.config.ts
 Este archivo:
 
 - carga variables con `loadEnv`
-- usa `VITE_API_PROXY_TARGET || VITE_API_URL || http://localhost:8081`
+- usa `API_PROXY_TARGET || VITE_API_PROXY_TARGET || VITE_API_URL || http://localhost:8081`
 - configura proxy para `/api`
 - agrega el header `ngrok-skip-browser-warning: 1` cuando se usa ngrok
-- permite hosts `.ngrok-free.app`
+- permite todos los hosts solo cuando `ALLOW_ALL_HOSTS=true`
+- restringe hosts en produccion usando `ALLOWED_HOSTS`
+- impide que produccion arranque con `ALLOW_ALL_HOSTS=true` o sin hosts configurados
 
 ## Estructura principal
 
@@ -285,8 +311,10 @@ Failed to fetch
 Para desarrollo, evita eso usando:
 
 ```env
+ALLOW_ALL_HOSTS=true
+ALLOWED_HOSTS=
 VITE_API_URL=
-VITE_API_PROXY_TARGET=https://TU-SUBDOMINIO.ngrok-free.app
+API_PROXY_TARGET=https://TU-SUBDOMINIO.ngrok-free.app
 ```
 
 Asi el navegador llama a `/api/...` en el mismo origen de Vite y Vite reenvia la peticion al backend.
@@ -300,3 +328,5 @@ Asi el navegador llama a `/api/...` en el mismo origen de Vite y Vite reenvia la
 - `src/pages/Mapa/MapaPage.tsx`: pagina principal del mapa.
 - `src/components/MapaDiseñador.tsx`: dibujo y guardado de rutas.
 - `vite.config.ts`: proxy, host y configuracion de Vite.
+- `.env.example`: ejemplo documentado para desarrollo y produccion.
+- `.env.development`: variables de desarrollo y pruebas.
