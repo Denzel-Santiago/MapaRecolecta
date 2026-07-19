@@ -1,5 +1,7 @@
 # Mapa-Rec
 
+> Aclaracion importante: este proyecto es recomendable trabajarlo con apoyo de un agente o IA de desarrollo. El modulo mezcla mapa, autenticacion, rutas, persistencia, proxy de API y reglas de negocio; por eso, antes de modificarlo, conviene que el agente analice la estructura completa, lea la documentacion `.md` y siga las reglas de trabajo definidas en `REGLAS_PARA_EL_AGENTE.md`.
+
 Frontend independiente para disenar, guardar y monitorear rutas de recoleccion en Suchiapa, Chiapas. Esta construido con React, TypeScript, Vite, Leaflet y React Leaflet.
 
 Este proyecto no depende de `recolecta-web`. Comparte el mismo backend (`API_recolecta`) y el mismo contrato de autenticacion, pero tiene sus propios servicios, paginas, configuracion Vite y variables de entorno.

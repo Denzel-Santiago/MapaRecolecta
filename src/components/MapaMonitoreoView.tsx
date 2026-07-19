@@ -9,6 +9,7 @@ import "leaflet/dist/leaflet.css";
 import type { Coordenada } from "../models/geo";
 import { obtenerIconoCamion } from "../utils/IconosCamion";
 import type { EstadoCamion } from "../data/DatosFalsos";
+import { MAP_INITIAL_ZOOM, OSM_ATTRIBUTION, OSM_TILE_URL, SUCHIAPA_CENTER } from "../constants/mapa";
 
 const CAMION_ESTADO_PREDETERMINADO: EstadoCamion = "activo";
 
@@ -23,14 +24,11 @@ export default function MapaMonitoreoView({
 }) {
   return (
     <MapContainer
-      center={ruta.length > 0 ? ruta[0] : [16.6166, -93.1]}
-      zoom={14}
+      center={ruta.length > 0 ? ruta[0] : SUCHIAPA_CENTER}
+      zoom={MAP_INITIAL_ZOOM}
       style={{ height: "100%", width: "100%" }}
     >
-      <TileLayer
-        attribution="&copy; OpenStreetMap contributors"
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+      <TileLayer attribution={OSM_ATTRIBUTION} url={OSM_TILE_URL} />
 
       {ruta.map((punto, index) => {
         const recorrido = index < rutaRecorrida.length;

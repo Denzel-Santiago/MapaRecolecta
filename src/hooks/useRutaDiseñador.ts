@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { Coordenada } from "../models/geo";
-import { estaDentroDeSuchiapa } from "../services/rutaService";
+import { estaDentroDeSuchiapa } from "../services/mapaGeoService";
 import { MIN_ROUTE_POINTS } from "../constants/mapa";
 
 export function useRutaDiseñador(initialRuta: Coordenada[] = []) {

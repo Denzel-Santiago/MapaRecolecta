@@ -10,10 +10,10 @@ export function obtenerCamionesSimulados(): Promise<Camion[]> {
   return Promise.resolve(listaCamiones);
 }
 
-export function subirRutaSimulada(_ruta: Coordenada[]): Promise<void> {
+export function subirRutaSimulada(): Promise<void> {
   return Promise.resolve();
 }
 
-export function actualizarCamionSimulado(_camion: Camion): Promise<void> {
+export function actualizarCamionSimulado(): Promise<void> {
   return Promise.resolve();
 }

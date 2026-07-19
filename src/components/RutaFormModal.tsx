@@ -53,12 +53,12 @@ export default function RutaFormModal({
           />
         </label>
         <label>
-          Descripcion
+          Descripción
           <textarea
             required
             value={datos.descripcion}
             onChange={(e) => setDatos({ ...datos, descripcion: e.target.value })}
-            placeholder="Descripcion general de la ruta"
+            placeholder="Descripción general de la ruta"
             rows={4}
             disabled={loading}
           />

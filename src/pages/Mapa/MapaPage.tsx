@@ -10,7 +10,18 @@ import "./MapaPage.css";
 export default function MapaPage({ onLogout }: { onLogout: () => void }) {
   const [vistaActual, setVistaActual] = useState<"diseñador" | "monitoreo">("diseñador");
   const [rutaMonitoreada, setRutaMonitoreada] = useState<RutaDiseñada>();
-  const { rutasDiseñadas, guardarRuta, eliminarRuta, obtenerRutaPorCamion } = useRutasDiseñadas();
+  const {
+    rutasDiseñadas,
+    rutasVisibles,
+    rutaSeleccionadaId,
+    cargando,
+    error,
+    guardarRuta,
+    eliminarRuta,
+    obtenerRutaPorCamion,
+    seleccionarRuta,
+    verTodas,
+  } = useRutasDiseñadas();
 
   const irAMonitoreo = (ruta: RutaDiseñada) => {
     setRutaMonitoreada(ruta);
@@ -27,16 +38,24 @@ export default function MapaPage({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="mapa-page">
       <div className="session-bar">
-        <span>Sesion activa</span>
-        <button type="button" onClick={cerrarSesion}>Cerrar sesion</button>
+        <span>Sesión activa</span>
+        <button type="button" onClick={cerrarSesion}>
+          Cerrar sesión
+        </button>
       </div>
 
       {vistaActual === "diseñador" ? (
         <MapaDiseñador
           rutas={rutasDiseñadas}
+          rutasVisibles={rutasVisibles}
+          cargando={cargando}
+          errorRutas={error}
+          rutaSeleccionadaId={rutaSeleccionadaId}
           guardarRuta={guardarRuta}
           eliminarRuta={eliminarRuta}
           obtenerRutaPorCamion={obtenerRutaPorCamion}
+          seleccionarRuta={seleccionarRuta}
+          verTodas={verTodas}
           irAMonitoreo={irAMonitoreo}
         />
       ) : (

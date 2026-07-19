@@ -1,33 +1,54 @@
 import type { Coordenada, CoordenadaDTO } from "../models/geo";
 import type { DatosRutaForm, PuntoRuta, RutaDiseñada } from "../models/rutaDiseñada";
-import { SUCHIAPA_BOUNDS } from "../constants/mapa";
+import { obtenerColorCamion } from "../utils/ColoresCamion";
+import {
+  coordenadaToDTO,
+  estaDentroDeSuchiapa,
+  rutaToDTO,
+  validarRutaEnSuchiapa,
+} from "./mapaGeoService";
 
-export function coordenadaToDTO([latitud, longitud]: Coordenada): CoordenadaDTO {
-  return { latitud, longitud };
-}
-
-export function rutaToDTO(ruta: Coordenada[]): CoordenadaDTO[] {
-  return ruta.map(coordenadaToDTO);
-}
-
-export function estaDentroDeSuchiapa([latitud, longitud]: Coordenada): boolean {
-  const [puntoMin, puntoMax] = SUCHIAPA_BOUNDS;
-  const [latMin, lngMin] = puntoMin;
-  const [latMax, lngMax] = puntoMax;
-
-  return latitud >= latMin && latitud <= latMax && longitud >= lngMin && longitud <= lngMax;
-}
+export { coordenadaToDTO, estaDentroDeSuchiapa, rutaToDTO };
 
 export function validarRuta(ruta: Coordenada[]): boolean {
-  return ruta.every(estaDentroDeSuchiapa);
+  return validarRutaEnSuchiapa(ruta);
 }
 
 export function coordenadasAPuntos(ruta: Coordenada[]): PuntoRuta[] {
-  return ruta.map(([lat, lng], index) => ({ orden: index + 1, lat, lng }));
+  return ruta.map(([lat, lon], index) => ({
+    punto_id: null,
+    cp: index + 1,
+    orden: index + 1,
+    lat,
+    lon,
+    lng: lon,
+  }));
 }
-export function crearRutaDiseñada(camionId: number, datos: DatosRutaForm, ruta: Coordenada[]): RutaDiseñada {
-  return { ruta_id: null, nombre: datos.nombre, descripcion: datos.descripcion, camion_id: camionId, puntos: coordenadasAPuntos(ruta) };
+
+export function crearRutaDiseñada(
+  camionId: number,
+  datos: DatosRutaForm,
+  ruta: Coordenada[],
+  rutaId: number | null = null
+): RutaDiseñada {
+  return {
+    ruta_id: rutaId,
+    nombre: datos.nombre,
+    descripcion: datos.descripcion,
+    camion_id: camionId,
+    color: obtenerColorCamion(camionId),
+    visible: true,
+    puntos: coordenadasAPuntos(ruta),
+  };
 }
+
 export function exportarRutas(rutas: RutaDiseñada[]): RutaDiseñada[] {
-  return [...rutas].sort((a, b) => a.camion_id - b.camion_id).map((ruta) => ({ ...ruta, puntos: ruta.puntos.map((punto) => ({ ...punto })) }));
+  return [...rutas]
+    .sort((a, b) => a.camion_id - b.camion_id)
+    .map((ruta) => ({
+      ...ruta,
+      puntos: ruta.puntos.map((punto) => ({ ...punto })),
+    }));
 }
+
+export type { CoordenadaDTO };

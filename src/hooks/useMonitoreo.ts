@@ -1,23 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Coordenada } from "../models/geo";
 import { calcularPorcentajeAvance, obtenerRutaRecorrida } from "../services/monitoreoService";
 
 export function useMonitoreo(ruta: Coordenada[]) {
   const [indiceActual, setIndiceActual] = useState(0);
-  const [posicionCamion, setPosicionCamion] = useState<Coordenada | null>(null);
   const [ultimaActualizacion, setUltimaActualizacion] = useState<string>("-");
 
   useEffect(() => {
-    if (ruta.length < 2) {
+    const reset = window.setTimeout(() => {
       setIndiceActual(0);
-      setPosicionCamion(null);
-      setUltimaActualizacion("-");
-      return;
-    }
+      setUltimaActualizacion(ruta.length < 2 ? "-" : new Date().toLocaleTimeString());
+    }, 0);
 
-    setIndiceActual(0);
-    setPosicionCamion(ruta[0]);
-    setUltimaActualizacion(new Date().toLocaleTimeString());
+    if (ruta.length < 2) {
+      return () => window.clearTimeout(reset);
+    }
 
     const intervalo = window.setInterval(() => {
       setIndiceActual((prev) => {
@@ -33,23 +30,27 @@ export function useMonitoreo(ruta: Coordenada[]) {
       });
     }, 1000);
 
-    return () => window.clearInterval(intervalo);
+    return () => {
+      window.clearTimeout(reset);
+      window.clearInterval(intervalo);
+    };
   }, [ruta]);
 
-  useEffect(() => {
+  const indiceSeguro = ruta.length === 0 ? 0 : Math.min(indiceActual, ruta.length - 1);
+
+  const posicionCamion = useMemo<Coordenada | null>(() => {
     if (ruta.length === 0) {
-      setPosicionCamion(null);
-      return;
+      return null;
     }
 
-    setPosicionCamion(ruta[Math.min(indiceActual, ruta.length - 1)]);
-  }, [indiceActual, ruta]);
+    return ruta[indiceSeguro];
+  }, [indiceSeguro, ruta]);
 
-  const rutaRecorrida = obtenerRutaRecorrida(ruta, indiceActual);
-  const porcentajeAvance = calcularPorcentajeAvance(ruta, indiceActual);
+  const rutaRecorrida = obtenerRutaRecorrida(ruta, indiceSeguro);
+  const porcentajeAvance = calcularPorcentajeAvance(ruta, indiceSeguro);
 
   return {
-    indiceActual,
+    indiceActual: indiceSeguro,
     posicionCamion,
     rutaRecorrida,
     porcentajeAvance,
