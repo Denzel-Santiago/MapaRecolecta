@@ -9,8 +9,9 @@ Antes de implementar cualquier cambio, el agente debe revisar:
 1. `README.md`
 2. `MAPA-FUNCIONAMIENTO.md`
 3. `PLAN_DE_SEGUIMIENTO.md`
-4. Este archivo: `REGLAS_PARA_EL_AGENTE.md`
-5. Los archivos directamente relacionados con la tarea solicitada
+4. `PLAN_ADAPTACION_ADMIN.md`
+5. Este archivo: `REGLAS_PARA_EL_AGENTE.md`
+6. Los archivos directamente relacionados con la tarea solicitada
 
 El agente no debe asumir que el README contiene todo el estado actual. Debe contrastar la documentacion con el codigo real.
 
@@ -192,6 +193,7 @@ Documentos importantes:
 - `README.md`: guia general del proyecto;
 - `MAPA-FUNCIONAMIENTO.md`: explicacion funcional y tecnica del mapa;
 - `PLAN_DE_SEGUIMIENTO.md`: estado del trabajo y pendientes;
+- `PLAN_ADAPTACION_ADMIN.md`: plan para integrar el plan obligatorio del administrador sin romper la logica actual;
 - `REGLAS_PARA_EL_AGENTE.md`: reglas para futuros agentes.
 
 ## 12. Manejo de cambios existentes

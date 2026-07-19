@@ -1,5 +1,15 @@
 # PLAN_DE_SEGUIMIENTO
 
+Nota de coordinacion:
+
+El proyecto ahora cuenta con un plan complementario obligatorio para adaptar el modulo al plan proporcionado por el administrador:
+
+```txt
+PLAN_ADAPTACION_ADMIN.md
+```
+
+Ese documento no reemplaza este plan. Lo complementa y debe revisarse antes de implementar cambios relacionados con modo borrador, sincronizacion por lotes, geometria vial, `json_ruta` oficial o publicacion de rutas para la app movil.
+
 ## 1. Objetivo actual
 
 Actualizar el modulo de mapa para que soporte varias rutas independientes, asociadas a camiones, con colores propios, control por capas y persistencia real en backend.
