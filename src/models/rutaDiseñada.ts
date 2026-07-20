@@ -2,7 +2,9 @@ import type { Coordenada } from "./geo";
 
 export interface PuntoRuta {
   punto_id?: number | null;
-  cp?: number;
+  // string: asi lo espera el backend real (ver PLAN_DE_SEGUIMIENTO.md
+  // seccion 5). El orden para ordenar/sincronizar se maneja con `orden`.
+  cp?: string;
   orden: number;
   lat: number;
   lng?: number;
@@ -13,7 +15,9 @@ export interface RutaDiseñada {
   ruta_id: number | null;
   nombre: string;
   descripcion: string;
-  camion_id: number;
+  // Puede ser null mientras no se resuelve la asignacion real via
+  // rutaCamionApi (backend no guarda camion_id dentro de Ruta).
+  camion_id: number | null;
   color?: string;
   visible?: boolean;
   puntos: PuntoRuta[];

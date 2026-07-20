@@ -17,7 +17,7 @@ export function validarRuta(ruta: Coordenada[]): boolean {
 export function coordenadasAPuntos(ruta: Coordenada[]): PuntoRuta[] {
   return ruta.map(([lat, lon], index) => ({
     punto_id: null,
-    cp: index + 1,
+    cp: String(index + 1),
     orden: index + 1,
     lat,
     lon,
@@ -44,7 +44,7 @@ export function crearRutaDiseñada(
 
 export function exportarRutas(rutas: RutaDiseñada[]): RutaDiseñada[] {
   return [...rutas]
-    .sort((a, b) => a.camion_id - b.camion_id)
+    .sort((a, b) => (a.camion_id ?? Number.MAX_SAFE_INTEGER) - (b.camion_id ?? Number.MAX_SAFE_INTEGER))
     .map((ruta) => ({
       ...ruta,
       puntos: ruta.puntos.map((punto) => ({ ...punto })),

@@ -4,7 +4,10 @@ import { apiRequest } from "./api";
 import { backendToPuntoRuta, type PuntoRutaBackend } from "./rutasApi";
 
 export interface PuntoRecoleccionRequest {
-  cp: number;
+  // string: la entidad real PuntoRecoleccion en backend declara `cp` como
+  // string (ver PLAN_DE_SEGUIMIENTO.md seccion 5). Enviar numero puede
+  // fallar el binding JSON en el backend.
+  cp: string;
   lat: number;
   lon: number;
   ruta_id: number;
@@ -27,7 +30,7 @@ function extraerLista<T>(respuesta: ApiListResponse<T>): T[] {
 
 export function puntoToBackend(punto: PuntoRuta, rutaId: number): PuntoRecoleccionRequest {
   return {
-    cp: punto.cp ?? punto.orden,
+    cp: punto.cp ?? String(punto.orden),
     lat: punto.lat,
     lon: obtenerLongitudPunto(punto),
     ruta_id: rutaId,

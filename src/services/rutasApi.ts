@@ -9,7 +9,11 @@ export interface PuntoRutaBackend {
   lat?: number;
   lon?: number;
   lng?: number;
-  cp?: number;
+  // string: asi lo declara la entidad real PuntoRecoleccion en backend.
+  cp?: string;
+  // orden: la tabla ya tiene esta columna, pero el backend todavia no la
+  // lee/escribe (ver PLAN_DE_SEGUIMIENTO.md seccion 14.3). Se deja aqui
+  // por si backend empieza a devolverla.
   orden?: number;
   punto_id?: number;
   id?: number;
@@ -33,8 +37,6 @@ export interface RutaBackend {
 export interface CrearRutaRequest {
   nombre: string;
   descripcion: string;
-  camion_id: number;
-  color: string;
   json_ruta: PuntoRutaBackend[];
 }
 
@@ -62,8 +64,12 @@ function obtenerRutaId(ruta: RutaBackend): number | null {
   return ruta.ruta_id ?? ruta.id ?? null;
 }
 
-function obtenerCamionId(ruta: RutaBackend): number {
-  return ruta.camion_id ?? ruta.camionId ?? 0;
+// Backend real hoy no guarda camion_id dentro de Ruta (confirmado en
+// PLAN_DE_SEGUIMIENTO.md seccion 14.1). Si en el futuro empieza a
+// devolverlo, se recoge aqui como fallback; mientras tanto, la resolucion
+// real de camion_id se hace por separado con rutaCamionApi.
+function obtenerCamionId(ruta: RutaBackend): number | null {
+  return ruta.camion_id ?? ruta.camionId ?? null;
 }
 
 export function construirJsonRuta(ruta: RutaDiseñada): PuntoRutaBackend[] {
@@ -75,25 +81,27 @@ export function construirJsonRuta(ruta: RutaDiseñada): PuntoRutaBackend[] {
     }));
 }
 
+// El backend real de /api/rutas/ solo acepta nombre, descripcion y
+// json_ruta (ver PLAN_DE_SEGUIMIENTO.md seccion 5): camion_id y color no
+// se envian porque se ignorarian silenciosamente. La asignacion de camion
+// se persiste aparte con rutaCamionApi.
 export function construirRutaBackend(ruta: RutaDiseñada): CrearRutaRequest {
-  const color = ruta.color ?? obtenerColorCamion(ruta.camion_id);
-
   return {
     nombre: ruta.nombre,
     descripcion: ruta.descripcion,
-    camion_id: ruta.camion_id,
-    color,
     json_ruta: construirJsonRuta(ruta),
   };
 }
 
 export function backendToPuntoRuta(punto: PuntoRutaBackend, index: number): PuntoRuta {
   const lon = punto.lon ?? punto.lng ?? punto.longitud ?? 0;
+  const cpComoNumero = punto.cp !== undefined ? Number(punto.cp) : undefined;
+  const cpEsNumeroValido = cpComoNumero !== undefined && !Number.isNaN(cpComoNumero);
 
   return {
     punto_id: punto.punto_id ?? punto.id ?? null,
-    cp: punto.cp ?? punto.orden ?? index + 1,
-    orden: punto.orden ?? punto.cp ?? index + 1,
+    cp: punto.cp ?? String(punto.orden ?? index + 1),
+    orden: punto.orden ?? (cpEsNumeroValido ? cpComoNumero : index + 1),
     lat: punto.lat ?? punto.latitud ?? 0,
     lon,
     lng: lon,
