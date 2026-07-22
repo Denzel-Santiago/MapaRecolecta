@@ -1,4 +1,5 @@
 import { apiRequest, clearToken, getToken, setToken } from "./api";
+import { OFFLINE_CREDENCIALES, OFFLINE_MODE, construirTokenOffline } from "./offlineMode";
 
 export const ROLES = {
   ADMIN: 1,
@@ -87,6 +88,28 @@ export function canAccessDesigner(roleId: number | null): boolean {
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {
+  if (OFFLINE_MODE) {
+    const coincide =
+      email.trim().toLowerCase() === OFFLINE_CREDENCIALES.email &&
+      password === OFFLINE_CREDENCIALES.password;
+
+    if (!coincide) {
+      throw new Error(
+        `Modo offline activo. Usa la credencial de prueba: ${OFFLINE_CREDENCIALES.email} / ${OFFLINE_CREDENCIALES.password}`
+      );
+    }
+
+    setToken(construirTokenOffline());
+
+    const sesionOffline = getAuthSession();
+
+    if (!sesionOffline) {
+      throw new Error("No se pudo crear la sesion offline.");
+    }
+
+    return sesionOffline;
+  }
+
   const data = await apiRequest<LoginResponse>("/api/empleados/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),

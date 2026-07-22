@@ -2,7 +2,9 @@
 
 ## 1. Descripcion general
 
-`Mapa-Rec` es el frontend del modulo de mapa de Recolecta. Permite iniciar sesion, proteger el acceso por rol, disenar rutas de recoleccion sobre un mapa de Suchiapa, guardar rutas en el backend y simular el monitoreo del avance de un camion sobre una ruta.
+`Mapa-Rec` es el frontend del modulo de mapa de Recolecta. Permite iniciar sesion, proteger el acceso por rol, disenar rutas de recoleccion sobre un mapa de Suchiapa (por clic libre o por un modo detector con KNN + peso), calcular geometria oficial por calles, guardar rutas en el backend y simular el monitoreo del avance de un camion sobre una ruta. Tambien tiene un modo offline para pruebas internas sin backend.
+
+Este documento describe como funciona el proyecto hoy. Para el diseño completo, las decisiones tomadas y el estado fase por fase de las funciones nuevas (detector, borrador, geometria vial, publicacion), ver `PLAN_MAPA_COMPLETO.md`.
 
 El proyecto esta construido con:
 
@@ -115,6 +117,28 @@ Esto evita problemas CORS cuando el frontend corre en `localhost:5173` y el back
 
 El cliente tambien convierte errores de HTML, errores de ngrok y errores JSON en mensajes legibles para la interfaz.
 
+## 4.1 Modo offline (pruebas internas)
+
+Para poder probar el mapa sin depender del backend, existe un modo offline en:
+
+```txt
+src/services/offlineMode.ts
+```
+
+Se activa con la variable de entorno:
+
+```env
+VITE_OFFLINE_MODE=true
+```
+
+Cuando esta activo:
+
+- `authService.login` valida contra una credencial fija (`OFFLINE_CREDENCIALES`) y genera un token JWT falso (`construirTokenOffline`, rol ADMIN, 30 dias de vigencia) en vez de llamar a `POST /api/empleados/login`.
+- Las cinco funciones de `rutasApi.ts` (`listarRutas`, `obtenerRuta`, `guardarRuta`, `actualizarRuta`, `eliminarRutaBackend`) operan sobre un arreglo en memoria (`rutasOffline`, sembrado con 2 rutas de ejemplo) en vez de llamar al backend real.
+- `LoginPage` precarga la credencial offline y muestra un aviso visible de que esta en modo offline.
+
+Con `VITE_OFFLINE_MODE=false` (o sin definir) el comportamiento es exactamente el mismo de siempre, contra el backend real.
+
 ## 5. Configuracion Vite y entorno
 
 El archivo real de configuracion es:
@@ -194,9 +218,11 @@ El estado de rutas vive actualmente en memoria del frontend, dentro del hook `us
 El disenador esta dividido en:
 
 ```txt
-src/components/MapaDisenador.tsx
-src/components/MapaDisenadorView.tsx
-src/hooks/useRutaDisenador.ts
+src/components/MapaDiseñador.tsx
+src/components/MapaDiseñadorView.tsx
+src/hooks/useRutaDiseñador.ts
+src/hooks/useDetectorRuta.ts
+src/hooks/useRutaBorrador.ts
 src/components/SeleccionCamionModal.tsx
 src/components/RutaFormModal.tsx
 src/components/ResumenRutas.tsx
@@ -285,6 +311,57 @@ Para guardar se exige minimo:
 ```ts
 MIN_ROUTE_POINTS = 2
 ```
+
+### 7.5 Modo detector (KNN + peso)
+
+Ademas del flujo de clic libre (7.2-7.4), el disenador tiene un segundo modo, activable con el boton "Modo detector", que conviven sin reemplazarse. Implementado en:
+
+```txt
+src/services/mapaGeoService.ts        (encontrarVecinoMasCercano, calcularPesoNuevoPunto)
+src/models/listaRuta.ts               (ListaRuta, NodoPunto, PuntoConPeso)
+src/services/detectorRutaService.ts   (procesarDeteccion, puntosRutaAConPeso)
+src/hooks/useDetectorRuta.ts
+```
+
+En este modo, un clic en el mapa solo marca un "candidato"; no se agrega nada hasta presionar "Detectar punto". Al detectar:
+
+1. Se busca el vecino mas cercano (K-Nearest-Neighbours, k=1) entre los puntos ya guardados.
+2. Se calcula el `peso` del punto nuevo promediando con sus vecinos estructurales en una lista enlazada (`ListaRuta`), o se le asigna `peso = 0` si no hay ningun vecino a menos de `UMBRAL_VECINO_METROS` (40 m).
+3. Los puntos con `peso = 0` quedan como "pendientes": se dibujan como marcadores sueltos, sin conectar con `Polyline`, hasta que otra deteccion los enlace.
+4. Si el candidato esta a menos de `DISTANCIA_MINIMA_DUPLICADO_METROS` (3 m) de un punto ya existente, se ignora como duplicado.
+5. El orden final para dibujar y guardar siempre sale de recorrer la lista enlazada de cabeza a cola (nunca de ordenar por `peso`, que puede tener empates).
+
+Ver `PLAN_MAPA_COMPLETO.md`, seccion 6, para el detalle completo de la regla del peso.
+
+### 7.6 Curvas automaticas
+
+`generarGeometriaVisual` (en `mapaGeoService.ts`) suaviza, solo para dibujar, los tramos donde el giro entre tres puntos consecutivos esta entre `UMBRAL_CURVA_MIN_GRADOS` (15°) y `UMBRAL_CURVA_MAX_GRADOS` (75°), usando interpolacion Catmull-Rom. Las lineas rectas (giro cercano a 0°) y las esquinas reales (giro cercano a 90°) se dejan sin tocar. Esto es puramente visual: los puntos de control reales (los que se guardan y se usan como `Marker`/`CircleMarker`) no cambian.
+
+### 7.7 Modo borrador (edicion en memoria)
+
+```txt
+src/models/rutaBorrador.ts
+src/services/rutaBorradorService.ts
+src/hooks/useRutaBorrador.ts
+```
+
+Envuelve, sin modificar su logica interna, la salida de cualquiera de los dos flujos anteriores (clic libre o detector). Mantiene un `RutaBorrador` con cada punto marcado como `sin_cambios`, `nuevo`, `reordenado` o `eliminado`, comparando por coordenada contra el estado anterior. Sirve para mostrar un indicador de "cambios sin sincronizar" y para preparar, mas adelante, el guardado por lotes (`sync`). **Hoy no cambia el guardado real**: `Finalizar Ruta` sigue yendo por el mismo camino de siempre (`rutasApi.ts`).
+
+`src/services/puntosRecoleccionApi.ts` ya tiene escrito `syncPuntosRecoleccion`/`sincronizarPuntosDeRuta` (`POST /api/puntos-recoleccion/sync`). Tras un guardado exitoso, `MapaDiseñador.tsx` siempre re-basea el borrador contra lo que realmente quedo guardado (para que el indicador de "cambios sin sincronizar" no se quede encendido para siempre). El intento de `sync` en si **solo se ejecuta si `VITE_SYNC_PUNTOS_ENABLED=true`** (apagado por defecto): el contrato exacto de ese endpoint todavia no esta confirmado con backend, asi que el intento es no bloqueante y falla en silencio (con un aviso no bloqueante en pantalla) si el endpoint no existe o responde distinto.
+
+### 7.8 Geometria vial oficial (opt-in)
+
+```txt
+src/services/rutaVialService.ts
+```
+
+El boton "Calcular geometria oficial" pide, bajo demanda, la ruta real por calles a un motor de ruteo compatible con la API de OSRM (por defecto, el servidor de demostracion publico `router.project-osrm.org`, pensado solo para pruebas, no para produccion). Si el calculo tiene exito, esa geometria reemplaza la curva provisional (7.6) solo para la ruta que se esta editando. Si no se pide, o si falla, todo se ve exactamente igual que antes. La geometria calculada se invalida automaticamente en cuanto cambian los puntos de control.
+
+### 7.9 Publicacion de ruta (solo en memoria)
+
+El boton "Publicar ruta" cambia `RutaBorrador.estadoPublicacion` (`BORRADOR` / `ERROR` / `PUBLICADA`) usando `publicarRuta`/`volverABorrador` de `rutaBorradorService.ts`. Solo permite pasar a `PUBLICADA` si ya se calculo una geometria oficial valida (7.8); si no, queda en `ERROR`. Editar los puntos despues de publicar revierte automaticamente a `BORRADOR`.
+
+**Este estado es puramente del frontend, no se persiste**: backend todavia no confirma si maneja un campo de estado de publicacion de ruta. La UI lo aclara explicitamente para no dar a entender que una ruta "publicada" aqui ya es visible para la app movil del conductor.
 
 ## 8. Datos que se envian al backend
 
@@ -533,23 +610,34 @@ Esto permitiria editar y eliminar puntos individualmente.
 - `src/components/ProtectedRoute.tsx`: protege el acceso.
 - `src/pages/Login/LoginPage.tsx`: formulario de login.
 - `src/pages/Mapa/MapaPage.tsx`: vista principal del modulo de mapa.
-- `src/components/MapaDisenador.tsx`: flujo de seleccion de camion, dibujo, guardado y acciones.
-- `src/components/MapaDisenadorView.tsx`: Leaflet para dibujar puntos y polilinea.
+- `src/components/MapaDiseñador.tsx`: flujo de seleccion de camion, dibujo (clic libre y detector), borrador, geometria vial, publicacion y guardado.
+- `src/components/MapaDiseñadorView.tsx`: Leaflet para dibujar puntos, polilinea, curvas y geometria oficial.
 - `src/components/ResumenRutas.tsx`: listado local de rutas creadas.
 - `src/components/RutaFormModal.tsx`: formulario de nombre y descripcion de ruta.
 - `src/components/SeleccionCamionModal.tsx`: seleccion inicial de camion.
 - `src/components/MapaMonitoreo.tsx`: panel de monitoreo.
 - `src/components/MapaMonitoreoView.tsx`: Leaflet para visualizar avance.
-- `src/hooks/useRutaDisenador.ts`: estado de puntos temporales.
-- `src/hooks/useRutasDisenadas.ts`: arreglo local de rutas disenadas.
+- `src/hooks/useRutaDiseñador.ts`: estado de puntos temporales (modo clic libre).
+- `src/hooks/useDetectorRuta.ts`: estado del modo detector (KNN + peso).
+- `src/hooks/useRutaBorrador.ts`: estado del modo borrador (cambios pendientes, publicacion).
+- `src/hooks/useRutasDiseñadas.ts`: arreglo local de rutas disenadas.
 - `src/hooks/useMonitoreo.ts`: simulacion de avance.
 - `src/services/api.ts`: cliente HTTP con token.
-- `src/services/authService.ts`: login, JWT, roles y logout.
-- `src/services/rutasApi.ts`: guardado actual en `/api/rutas/`.
+- `src/services/authService.ts`: login, JWT, roles y logout (con rama a modo offline).
+- `src/services/offlineMode.ts`: modo offline (credencial fija, rutas en memoria).
+- `src/services/rutasApi.ts`: guardado actual en `/api/rutas/` (con rama a modo offline).
 - `src/services/rutaService.ts`: conversion y validacion de rutas.
+- `src/services/mapaGeoService.ts`: distancia, limites, KNN, peso, angulos de giro y curvas Catmull-Rom.
+- `src/services/detectorRutaService.ts`: orquesta el pipeline del modo detector.
+- `src/services/rutaBorradorService.ts`: conversion, edicion y payload de sync del modo borrador.
+- `src/services/rutaVialService.ts`: geometria oficial por calles (API estilo OSRM).
+- `src/services/puntosRecoleccionApi.ts`: CRUD de puntos y `syncPuntosRecoleccion` (escrito, sin conectar a la UI).
 - `src/services/monitoreoService.ts`: porcentaje y tramo recorrido.
-- `src/constants/mapa.ts`: centro, limites y minimo de puntos.
+- `src/models/listaRuta.ts`: `ListaRuta`, `NodoPunto`, `PuntoConPeso`.
+- `src/models/rutaBorrador.ts`: `RutaBorrador`, `PuntoBorrador`, estados de publicacion.
+- `src/constants/mapa.ts`: centro, limites, minimo de puntos, umbrales de KNN/curvas/duplicados.
 - `vite.config.ts`: proxy, hosts permitidos y configuracion Vite.
+- `PLAN_MAPA_COMPLETO.md`: diseño completo, decisiones y estado fase por fase de todo lo anterior.
 
 ## 15. Scripts
 
@@ -558,6 +646,7 @@ npm run dev
 npm run build
 npm run preview
 npm run lint
+npm test
 ```
 
 `npm run build` ejecuta:
@@ -566,37 +655,38 @@ npm run lint
 tsc -b && vite build
 ```
 
+`npm test` ejecuta `vitest run` sobre los archivos `*.test.ts` (`listaRuta.test.ts`, `mapaGeoService.test.ts`, `detectorRutaService.test.ts`).
+
 ## 16. Limitaciones actuales
 
-- No se cargan rutas desde backend al iniciar.
-- No existe `puntosRecoleccionApi.ts`.
-- No se mandan puntos individualmente a `api/puntos-recoleccion`.
-- La edicion de rutas no esta persistida con `PUT/PATCH`.
-- La eliminacion de rutas no esta persistida con `DELETE`.
-- No hay capas para mostrar una ruta o todas.
-- No hay colores independientes por ruta.
+- `puntosRecoleccionApi.ts` existe (CRUD + `syncPuntosRecoleccion`) pero no esta conectado a ningun componente: el contrato de `POST /api/puntos-recoleccion/sync` no esta confirmado con backend.
+- El modo borrador (7.7) mantiene el estado de cambios en memoria, pero el guardado real sigue siendo el mismo de siempre (`rutasApi.ts`), no el `sync` por lotes.
+- La geometria oficial por calles (7.8) usa por defecto el servidor de demostracion publico de OSRM, no pensado para produccion; falta decidir un servidor propio o un proveedor con SLA.
+- El estado de publicacion de ruta (7.9) es solo del frontend: no se persiste, porque backend no confirma si maneja ese campo.
+- La edicion de rutas no esta persistida con `PUT/PATCH` mas alla de lo que ya hace `rutasApi.ts`.
+- La eliminacion de rutas no esta persistida en cascada de puntos (depende de que backend la maneje).
 - Los camiones disponibles en el modal estan fijos como 1, 2 y 3.
 - El monitoreo es una simulacion local por indice, no seguimiento real.
 - La posicion del camion avanza cada segundo de punto a punto, sin interpolacion.
+- `npm run lint` y `npm run build` (`tsc -b`) corren limpio; `npm test` (`vitest run`) puede fallar en algunos entornos por un problema conocido de esbuild/vitest ajeno al codigo del proyecto. Si eso ocurre, verificar la logica pura con `npx tsc` + `node -e` manual, como se documenta en `PLAN_MAPA_COMPLETO.md`.
 
 ## 17. Pendientes recomendados
 
-Prioridad alta:
+Prioridad alta (bloqueada por backend, ver `PLAN_MAPA_COMPLETO.md` seccion 10):
 
-1. Confirmar contrato de `api/rutas`.
-2. Confirmar contrato de `api/puntos-recoleccion`.
-3. Crear servicio `puntosRecoleccionApi.ts`.
-4. Guardar ruta base y luego guardar puntos con `ruta_id`.
-5. Guardar `punto_id` para editar o eliminar puntos.
-6. Cargar rutas y puntos desde backend al iniciar.
+1. Confirmar contrato de `api/rutas` y de `POST /api/puntos-recoleccion/sync`.
+2. Confirmar si existe un endpoint de geometria vial en backend, o si se sigue calculando en el frontend.
+3. Confirmar si backend va a manejar un estado de publicacion de ruta.
+4. Decidir un servidor de produccion para la geometria oficial (OSRM propio o proveedor con SLA).
+5. Conectar `syncPuntosRecoleccion` al guardado real una vez confirmado el contrato.
 
 Prioridad media:
 
 1. Agregar colores por camion o por ruta.
-2. Implementar selector desplegable de rutas.
-3. Permitir ver una ruta o todas.
-4. Separar ruta visible de ruta en edicion.
-5. Persistir edicion y eliminacion.
+2. Permitir ver una ruta o todas (ya existe el selector; falta capas independientes por color).
+3. Persistir edicion y eliminacion via sync en vez del camino actual.
+4. Completar pruebas automatizadas (`vitest`) para los servicios de red (`rutasApi.ts`, `puntosRecoleccionApi.ts`, `rutaVialService.ts`), que hoy no tienen cobertura.
+5. Limpiar codigo muerto (`src/api/mockApi.ts`, datos falsos sin usar).
 
 Prioridad futura:
 
@@ -604,7 +694,7 @@ Prioridad futura:
 2. Agregar monitoreo real desde API o WebSocket.
 3. Interpolar movimiento entre puntos.
 4. Calcular distancia y tiempo estimado.
-5. Agregar cache local/offline si se requiere.
+5. Agregar cache local/offline mas alla del modo offline de pruebas ya implementado.
 
 ## 18. Respuesta corta sobre que datos manda el mapa
 

@@ -10,6 +10,7 @@ import "leaflet/dist/leaflet.css";
 import type { Coordenada } from "../models/geo";
 import { puntosRutaACoordenadas, type RutaDiseñada } from "../models/rutaDiseñada";
 import ClickParaPuntos from "./ClickParaPuntos";
+import { generarGeometriaVisual } from "../services/mapaGeoService";
 import {
   MAP_BOUNDS_VISCOSITY,
   MAP_INITIAL_ZOOM,
@@ -28,6 +29,11 @@ export default function MapaDiseñadorView({
   onAddPoint,
   onEditPoint,
   puedeDibujar,
+  modoDetector,
+  puntosConectadosDetector,
+  puntosPendientesDetector,
+  candidatoDetector,
+  geometriaOficial = null,
 }: {
   puntos: Coordenada[];
   rutasVisibles: RutaDiseñada[];
@@ -35,6 +41,18 @@ export default function MapaDiseñadorView({
   onAddPoint: (punto: Coordenada) => void;
   onEditPoint: (indice: number, punto: Coordenada) => void;
   puedeDibujar: boolean;
+  modoDetector: boolean;
+  puntosConectadosDetector: Coordenada[];
+  puntosPendientesDetector: Coordenada[];
+  candidatoDetector: Coordenada | null;
+  /**
+   * Geometria oficial por calles (Fase 9), calculada bajo demanda con
+   * rutaVialService.obtenerGeometriaVial y guardada por el componente padre.
+   * Si esta presente (>= 2 puntos), reemplaza la curva provisional
+   * (generarGeometriaVisual) SOLO para la ruta que se esta editando en este
+   * momento; el resto de rutasVisibles no se ve afectado.
+   */
+  geometriaOficial?: Coordenada[] | null;
 }) {
   return (
     <MapContainer
@@ -57,7 +75,10 @@ export default function MapaDiseñadorView({
           return (
             <Fragment key={ruta.ruta_id ?? `camion-${ruta.camion_id}`}>
               {coordenadas.length >= 2 && (
-                <Polyline positions={coordenadas} pathOptions={{ color, weight: 4, opacity: 0.75 }} />
+                <Polyline
+                  positions={generarGeometriaVisual(coordenadas)}
+                  pathOptions={{ color, weight: 4, opacity: 0.75 }}
+                />
               )}
 
               {coordenadas.map((punto, index) => (
@@ -74,21 +95,76 @@ export default function MapaDiseñadorView({
 
       {puedeDibujar && <ClickParaPuntos onAddPoint={onAddPoint} />}
 
-      {puntos.length >= 2 && <Polyline positions={puntos} pathOptions={{ color: "#111827", weight: 5 }} />}
+      {!modoDetector && (
+        <>
+          {puntos.length >= 2 && (
+            <Polyline
+              positions={
+                geometriaOficial && geometriaOficial.length >= 2 ? geometriaOficial : generarGeometriaVisual(puntos)
+              }
+              pathOptions={{ color: "#111827", weight: 5 }}
+            />
+          )}
 
-      {puntos.map((punto, index) => (
-        <Marker
-          key={index}
-          position={punto}
-          draggable={puedeDibujar}
-          eventHandlers={{
-            dragend: (event) => {
-              const posicion = event.target.getLatLng();
-              onEditPoint(index, [posicion.lat, posicion.lng]);
-            },
-          }}
-        />
-      ))}
+          {puntos.map((punto, index) => (
+            <Marker
+              key={index}
+              position={punto}
+              draggable={puedeDibujar}
+              eventHandlers={{
+                dragend: (event) => {
+                  const posicion = event.target.getLatLng();
+                  onEditPoint(index, [posicion.lat, posicion.lng]);
+                },
+              }}
+            />
+          ))}
+        </>
+      )}
+
+      {modoDetector && (
+        <>
+          {/* Conectados: peso > 0, forman la cadena real de la ruta. */}
+          {puntosConectadosDetector.length >= 2 && (
+            <Polyline
+              positions={
+                geometriaOficial && geometriaOficial.length >= 2
+                  ? geometriaOficial
+                  : generarGeometriaVisual(puntosConectadosDetector)
+              }
+              pathOptions={{ color: "#7c3aed", weight: 5 }}
+            />
+          )}
+          {puntosConectadosDetector.map((punto, index) => (
+            <CircleMarker
+              key={`conectado-${index}`}
+              center={punto}
+              radius={6}
+              pathOptions={{ color: "#7c3aed", fillColor: "#7c3aed", fillOpacity: 0.9 }}
+            />
+          ))}
+
+          {/* Pendientes: peso = 0, sin vecino cercano, sin Polyline hasta que
+              otra deteccion los conecte (ver PLAN_MAPA_COMPLETO.md, seccion 7). */}
+          {puntosPendientesDetector.map((punto, index) => (
+            <CircleMarker
+              key={`pendiente-${index}`}
+              center={punto}
+              radius={6}
+              pathOptions={{ color: "#b45309", fillColor: "#fde68a", fillOpacity: 0.85, dashArray: "4 3" }}
+            />
+          ))}
+
+          {/* Candidato: recien marcado con clic, esperando "Detectar punto". */}
+          {candidatoDetector && (
+            <CircleMarker
+              center={candidatoDetector}
+              radius={8}
+              pathOptions={{ color: "#0284c7", fillColor: "#7dd3fc", fillOpacity: 0.6, dashArray: "3 3" }}
+            />
+          )}
+        </>
+      )}
     </MapContainer>
   );
 }

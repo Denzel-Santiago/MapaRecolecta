@@ -1,121 +1,70 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import type { Coordenada } from "../models/geo";
 import type { RutaBorrador } from "../models/rutaBorrador";
-import { rutaDiseñadaABorrador } from "../models/rutaBorrador";
 import type { RutaDiseñada } from "../models/rutaDiseñada";
 import {
-  agregarPuntoBorrador,
-  calcularGeometriaProvisional,
-  eliminarPuntoBorrador,
-  moverPuntoBorrador,
+  publicarRuta,
+  puedePublicarse,
+  rutaDiseñadaARutaBorrador,
+  sincronizarConPuntos,
+  tieneCambiosPendientes,
+  volverABorrador,
 } from "../services/rutaBorradorService";
-import { MIN_ROUTE_POINTS } from "../constants/mapa";
+
+const BORRADOR_VACIO: RutaBorrador = {
+  ruta_id: null,
+  nombre: "",
+  descripcion: "",
+  camion_id: 0,
+  puntos: [],
+  estadoPublicacion: "BORRADOR",
+};
 
 /**
- * Hook para editar en modo borrador una ruta YA GUARDADA en backend
- * (PLAN_ADAPTACION_ADMIN.md Fase 3).
+ * Capa de borrador (PLAN_MAPA_COMPLETO.md, seccion 5.1 y Fase 7). Envuelve,
+ * sin modificarlos, el resultado de cualquiera de los dos flujos de captura
+ * que ya existen en el Diseñador (clic libre via useRutaDiseñador, o el modo
+ * detector via useDetectorRuta): no reemplaza a ninguno de los dos, solo
+ * observa la lista de coordenadas activa (via `sincronizarPuntos`) y
+ * mantiene un RutaBorrador al dia.
  *
- * Solo aplica a rutas con `ruta_id` real: el modelo de borrador (ver
- * models/rutaBorrador.ts) existe para rastrear cambios sobre puntos que
- * ya estan persistidos. Para dibujar una ruta nueva que todavia no tiene
- * ruta_id, se sigue usando useRutaDiseñador tal cual (fallback explicito,
- * PLAN_ADAPTACION_ADMIN.md seccion 4, "Principio de compatibilidad").
- *
- * Expone una superficie de API compatible con useRutaDiseñador (puntos,
- * error, agregarPunto, editarPunto, deshacerUltimo, puedeGuardar) para
- * que MapaDiseñadorView -que solo conoce Coordenada[]- no tenga que
- * cambiar.
+ * Por ahora esto es solo para tener el borrador listo y visible (ej. un
+ * indicador de "cambios sin sincronizar"); el guardado real sigue yendo por
+ * el mismo camino de siempre (rutasApi) como respaldo, hasta que la Fase 8
+ * conecte de verdad `construirPayloadSync` contra backend.
  */
 export function useRutaBorrador() {
-  const [borrador, setBorrador] = useState<RutaBorrador | null>(null);
-  // IDs (temporales o reales) agregados durante la sesion de edicion
-  // actual, en orden. Solo sirve para que "Deshacer" sepa cual fue el
-  // ultimo punto agregado; no se persiste ni se envia a backend.
-  const idsAgregadosEnSesion = useRef<Array<string | number>>([]);
+  const [borrador, setBorrador] = useState<RutaBorrador>(BORRADOR_VACIO);
 
-  const iniciarDesdeRuta = useCallback((ruta: RutaDiseñada) => {
-    idsAgregadosEnSesion.current = [];
-    setBorrador(rutaDiseñadaABorrador(ruta));
+  const cargarDesdeRuta = useCallback((ruta: RutaDiseñada | undefined) => {
+    setBorrador(ruta ? rutaDiseñadaARutaBorrador(ruta) : BORRADOR_VACIO);
   }, []);
 
-  const limpiar = useCallback(() => {
-    idsAgregadosEnSesion.current = [];
-    setBorrador(null);
+  const sincronizarPuntos = useCallback((coordenadas: Coordenada[]) => {
+    setBorrador((actual) => sincronizarConPuntos(actual, coordenadas));
   }, []);
 
-  const agregarPunto = useCallback((coordenada: Coordenada) => {
-    let agregado = false;
+  const limpiarBorrador = useCallback(() => setBorrador(BORRADOR_VACIO), []);
 
-    setBorrador((actual) => {
-      if (!actual) {
-        return actual;
-      }
-
-      const cantidadAntes = actual.puntos.length;
-      const siguiente = agregarPuntoBorrador(actual, coordenada);
-      agregado = siguiente.puntos.length > cantidadAntes;
-
-      if (agregado) {
-        const puntoNuevo = siguiente.puntos[siguiente.puntos.length - 1];
-        idsAgregadosEnSesion.current.push(puntoNuevo.punto_id);
-      }
-
-      return siguiente;
-    });
-
-    return agregado;
+  // Fase 10: publicar/despublicar son transiciones locales (en memoria),
+  // porque backend todavia no confirma si maneja un estado de publicacion
+  // de ruta (seccion 10 del plan). No se persisten al guardar.
+  const publicar = useCallback((geometriaOficial: Coordenada[] | null | undefined) => {
+    setBorrador((actual) => publicarRuta(actual, geometriaOficial));
   }, []);
 
-  const editarPunto = useCallback((indice: number, coordenada: Coordenada) => {
-    setBorrador((actual) => {
-      if (!actual) {
-        return actual;
-      }
-
-      const vivosOrdenados = [...actual.puntos]
-        .filter((punto) => punto.estado !== "eliminado")
-        .sort((a, b) => a.orden - b.orden);
-
-      const punto = vivosOrdenados[indice];
-      if (!punto) {
-        return actual;
-      }
-
-      return moverPuntoBorrador(actual, punto.punto_id, coordenada);
-    });
+  const despublicar = useCallback(() => {
+    setBorrador((actual) => volverABorrador(actual));
   }, []);
-
-  // "Deshacer" solo revierte el ultimo punto agregado en esta sesion de
-  // edicion (igual que el flujo actual, que nunca deshace puntos ya
-  // guardados de sesiones anteriores). Si el ultimo punto agregado tenia
-  // id real (caso raro: solo pasaria si se agrego y no era temporal, lo
-  // cual no ocurre hoy), tambien se registra su eliminacion.
-  const deshacerUltimo = useCallback(() => {
-    const ultimoId = idsAgregadosEnSesion.current.pop();
-    if (ultimoId === undefined) {
-      return;
-    }
-
-    setBorrador((actual) => (actual ? eliminarPuntoBorrador(actual, ultimoId) : actual));
-  }, []);
-
-  const puntosVivosOrdenados = borrador
-    ? [...borrador.puntos].filter((punto) => punto.estado !== "eliminado").sort((a, b) => a.orden - b.orden)
-    : [];
-
-  const puntos: Coordenada[] = borrador ? calcularGeometriaProvisional(borrador.puntos) : [];
-  const error = borrador?.errores[0] ?? null;
-  const puedeGuardar = puntosVivosOrdenados.length >= MIN_ROUTE_POINTS;
 
   return {
     borrador,
-    puntos,
-    error,
-    puedeGuardar,
-    iniciarDesdeRuta,
-    limpiar,
-    agregarPunto,
-    editarPunto,
-    deshacerUltimo,
+    cargarDesdeRuta,
+    sincronizarPuntos,
+    limpiarBorrador,
+    publicar,
+    despublicar,
+    puedePublicarse,
+    tieneCambiosPendientes: tieneCambiosPendientes(borrador),
   };
 }

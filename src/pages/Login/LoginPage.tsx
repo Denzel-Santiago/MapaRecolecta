@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { canAccessDesigner, login, type AuthSession } from "../../services/authService";
+import { OFFLINE_CREDENCIALES, OFFLINE_MODE } from "../../services/offlineMode";
 import "./LoginPage.css";
 
 export default function LoginPage({ onAuthenticated }: { onAuthenticated: (session: AuthSession) => void }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(OFFLINE_MODE ? OFFLINE_CREDENCIALES.email : "");
+  const [password, setPassword] = useState(OFFLINE_MODE ? OFFLINE_CREDENCIALES.password : "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -35,6 +36,12 @@ export default function LoginPage({ onAuthenticated }: { onAuthenticated: (sessi
         <div className="login-copy">
           <p className="login-kicker">Recolecta</p>
           <h1>Diseñador de rutas</h1>
+          {OFFLINE_MODE && (
+            <p className="login-offline-aviso" role="status">
+              Modo offline activo: no se usa el backend. Credencial de prueba precargada
+              ({OFFLINE_CREDENCIALES.email} / {OFFLINE_CREDENCIALES.password}).
+            </p>
+          )}
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>
