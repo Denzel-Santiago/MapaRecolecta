@@ -26,7 +26,7 @@ export default function ResumenRutas({
             <article className="ruta-resumen" key={ruta.ruta_id ?? ruta.camion_id}>
               <strong>
                 <span className="swatch-ruta" style={{ backgroundColor: color }} />
-                Camión {ruta.camion_id} · {ruta.nombre}
+                Camión {ruta.camion_id ?? "sin asignar"} · {ruta.nombre}
               </strong>
               <span>{ruta.descripcion}</span>
               <span>{ruta.puntos.length} puntos de coordenadas</span>

@@ -16,7 +16,15 @@ const COLORES_CAMION = [
   "#4d7c0f",
 ];
 
-export function obtenerColorCamion(camionId: number): string {
+// Color neutro para una ruta cuya asignacion de camion todavia no se
+// resuelve (por ejemplo, mientras se consulta /api/ruta-camion).
+export const COLOR_SIN_CAMION = "#9ca3af";
+
+export function obtenerColorCamion(camionId: number | null): string {
+  if (camionId === null) {
+    return COLOR_SIN_CAMION;
+  }
+
   const indice = Math.abs(camionId - 1) % COLORES_CAMION.length;
   return COLORES_CAMION[indice];
 }

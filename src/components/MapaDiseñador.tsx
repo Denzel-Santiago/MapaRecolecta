@@ -9,6 +9,7 @@ import { useRutaBorrador } from "../hooks/useRutaBorrador";
 import type { Coordenada } from "../models/geo";
 import type { DatosRutaForm, RutaDiseñada } from "../models/rutaDiseñada";
 import { puntosRutaACoordenadas } from "../models/rutaDiseñada";
+import { borradorAPuntosRuta } from "../models/rutaBorrador";
 import { crearRutaDiseñada } from "../services/rutaService";
 import { puntosRutaAConPeso } from "../services/detectorRutaService";
 import { obtenerGeometriaVial } from "../services/rutaVialService";
@@ -19,6 +20,13 @@ import {
   backendToRutaDiseñada,
   guardarRuta as guardarRutaApi,
 } from "../services/rutasApi";
+import {
+  actualizarAsignacion,
+  crearAsignacion,
+  obtenerAsignacionActivaPorRuta,
+} from "../services/rutaCamionApi";
+import { reemplazarPuntosDeRuta } from "../services/puntosRecoleccionApi";
+import { guardarPuntosBorrador } from "../services/rutaBorradorService";
 import "./diseñador.css";
 
 // Fase 12 (PLAN_MAPA_COMPLETO.md): intento EXPERIMENTAL y opcional de sync
@@ -32,6 +40,15 @@ function esMismaRuta(a: RutaDiseñada, b?: RutaDiseñada): boolean {
   if (!b) return false;
   if (a.ruta_id !== null && b.ruta_id !== null) return a.ruta_id === b.ruta_id;
   return a.camion_id === b.camion_id;
+}
+
+// Una ruta "en modo borrador" es una ruta ya persistida (con ruta_id
+// real): ahi se usa el modelo de borrador (PLAN_ADAPTACION_ADMIN.md Fase
+// 1-3) para rastrear altas/bajas/movimientos punto por punto. Una ruta
+// que todavia no se guardo nunca (ruta_id === null) sigue el flujo de
+// dibujo libre de siempre (useRutaDiseñador), sin cambios.
+function esRutaPersistida(ruta?: RutaDiseñada): ruta is RutaDiseñada & { ruta_id: number } {
+  return !!ruta && ruta.ruta_id !== null;
 }
 
 export default function MapaDiseñador({
@@ -146,8 +163,13 @@ export default function MapaDiseñador({
     borrador.cargarDesdeRuta(ruta);
     setErrorSyncPuntos(null);
 
-    if (ruta.ruta_id !== null) {
+    if (esRutaPersistida(ruta)) {
+      rutaBorrador.iniciarDesdeRuta(ruta);
+      dibujoLibre.reemplazarPuntos([]);
       seleccionarRuta(ruta.ruta_id);
+    } else {
+      rutaBorrador.limpiar();
+      dibujoLibre.reemplazarPuntos(puntosRutaACoordenadas(ruta.puntos));
     }
   };
 
@@ -180,6 +202,7 @@ export default function MapaDiseñador({
     const rutaBase = crearRutaDiseñada(camionId, datos, puntosActivos, rutaEditada?.ruta_id ?? null);
     const rutaLocal = {
       ...rutaBase,
+      puntos: puntosLocales,
       color: rutaEditada?.color ?? rutaBase.color,
     };
 
@@ -197,13 +220,49 @@ export default function MapaDiseñador({
         ? await actualizarRutaApi(rutaLocal)
         : backendToRutaDiseñada((await guardarRutaApi(rutaLocal)).data);
 
-    const rutaFinal = {
+    let rutaFinal: RutaDiseñada = {
       ...rutaLocal,
       ...rutaGuardada,
-      puntos: rutaGuardada.puntos.length > 0 ? rutaGuardada.puntos : rutaLocal.puntos,
+      // json_ruta no trae punto_id: aceptar rutaGuardada.puntos aqui en
+      // modo borrador perderia la identidad que acabamos de preservar.
+      puntos: modoBorrador
+        ? rutaLocal.puntos
+        : rutaGuardada.puntos.length > 0
+          ? rutaGuardada.puntos
+          : rutaLocal.puntos,
       color: rutaGuardada.color ?? rutaLocal.color,
+      camion_id: camionId,
       visible: true,
     };
+
+    setErrorAsignacion(null);
+    if (rutaFinal.ruta_id !== null) {
+      const errorDeAsignacion = await persistirAsignacionCamion(rutaFinal.ruta_id, camionId);
+      setErrorAsignacion(errorDeAsignacion);
+    }
+
+    // Persistir los puntos en api/puntos-recoleccion (PLAN_DE_SEGUIMIENTO.md
+    // seccion 4.5 y 14.3). En modo borrador se usa el guardado dirigido
+    // por estado (crear solo lo nuevo, eliminar solo lo marcado); en
+    // dibujo libre (ruta nueva) se usa el reemplazo completo, que es lo
+    // correcto cuando no hay nada persistido todavia que preservar.
+    setErrorPuntos(null);
+    if (rutaFinal.ruta_id !== null) {
+      try {
+        const puntosPersistidos =
+          modoBorrador && rutaBorrador.borrador
+            ? await guardarPuntosBorrador({ ...rutaBorrador.borrador, ruta_id: rutaFinal.ruta_id })
+            : await reemplazarPuntosDeRuta(rutaFinal.ruta_id, rutaFinal.puntos);
+
+        if (puntosPersistidos.length > 0) {
+          rutaFinal = { ...rutaFinal, puntos: puntosPersistidos };
+        }
+      } catch (err) {
+        setErrorPuntos(
+          err instanceof Error ? err.message : "No se pudieron guardar los puntos de la ruta en el backend."
+        );
+      }
+    }
 
     guardarRuta(rutaFinal);
     setMostrarFormulario(false);
@@ -217,6 +276,11 @@ export default function MapaDiseñador({
 
     if (rutaFinal.ruta_id !== null) {
       seleccionarRuta(rutaFinal.ruta_id);
+      // A partir de aqui la ruta ya esta persistida (tenga o no
+      // ruta_id antes de este guardado): se reinicia el borrador desde
+      // el estado final confirmado por backend, para que la siguiente
+      // edicion parta de datos frescos y con los punto_id reales.
+      rutaBorrador.iniciarDesdeRuta(rutaFinal);
     }
 
     if (payloadSyncPendiente) {
@@ -234,7 +298,7 @@ export default function MapaDiseñador({
   };
 
   const eliminar = async (ruta: RutaDiseñada) => {
-    if (!window.confirm(`¿Eliminar la ruta del Camión ${ruta.camion_id}?`)) return;
+    if (!window.confirm(`¿Eliminar la ruta del Camión ${ruta.camion_id ?? "sin asignar"}?`)) return;
 
     await eliminarRuta(ruta);
 
@@ -312,7 +376,7 @@ export default function MapaDiseñador({
               .filter((ruta) => ruta.ruta_id !== null)
               .map((ruta) => (
                 <option key={ruta.ruta_id} value={ruta.ruta_id ?? ""}>
-                  Camión {ruta.camion_id} - {ruta.nombre}
+                  Camión {ruta.camion_id ?? "?"} - {ruta.nombre}
                 </option>
               ))}
           </select>

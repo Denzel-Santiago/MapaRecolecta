@@ -10,6 +10,8 @@ PLAN_ADAPTACION_ADMIN.md
 
 Ese documento no reemplaza este plan. Lo complementa y debe revisarse antes de implementar cambios relacionados con modo borrador, sincronizacion por lotes, geometria vial, `json_ruta` oficial o publicacion de rutas para la app movil.
 
+El contrato real de backend ya fue confirmado por revision directa del codigo fuente (`gin-backend`), en dos rondas: 2026-07-19 (primera revision) y 2026-07-19 (segunda revision, tras una actualizacion del equipo de backend). Ver seccion 14 para el detalle completo y vigente. Las secciones 5 y 6 de este documento ya reflejan ese contrato confirmado.
+
 ## 1. Objetivo actual
 
 Actualizar el modulo de mapa para que soporte varias rutas independientes, asociadas a camiones, con colores propios, control por capas y persistencia real en backend.
@@ -49,7 +51,7 @@ El mapa debe funcionar sobre una base clara:
 - OpenStreetMap como proveedor de tiles.
 - Coordenadas reales `[latitud, longitud]` como modelo interno.
 - Rutas y puntos guardados como datos geograficos, no como imagenes ni trazos visuales.
-- Servicios separados para ruta base, puntos de recoleccion y futuras funciones geograficas.
+- Servicios separados para ruta base, puntos de recoleccion, relacion ruta-camion y futuras funciones geograficas.
 
 ### Cambios recomendados para facilitar rutas y puntos
 
@@ -136,29 +138,24 @@ El proyecto ya cuenta con una base funcional:
 
 Sin embargo, el flujo actual todavia tiene limitaciones importantes:
 
-- La vista del mapa dibuja principalmente una sola ruta activa.
-- No existe un sistema de capas para mostrar u ocultar rutas.
-- Las rutas no tienen un color independiente por camion o por ruta.
-- El servicio `rutasApi.ts` solo guarda la ruta base con `POST /api/rutas/`.
-- No existe todavia un servicio frontend para persistir cada punto en `api/puntos-recoleccion`.
-- No existen llamadas frontend para listar, actualizar o eliminar rutas y puntos en backend.
-- La eliminacion actual solo modifica estado local.
-- La edicion actual no confirma un `PUT` o `PATCH` contra backend.
-- Al recargar la pagina no hay carga inicial de rutas desde backend.
-- La ruta se reemplaza por camion, pero no hay una experiencia clara para administrar historial o capas.
+- El servicio `rutasApi.ts` guarda y trae la ruta base, pero backend no persiste `camion_id`/`color`/`visible` dentro de `Ruta` (ver seccion 5). La relacion con el camion debe resolverse via `/api/ruta-camion`, todavia no integrado en frontend.
+- No existe todavia un servicio frontend para la relacion ruta-camion (`rutaCamionApi.ts`).
+- La persistencia de puntos individuales (`api/puntos-recoleccion`) ya tiene servicio, pero el guardado de puntos nuevos/editados/eliminados durante la edicion de una ruta no esta completamente integrado en el flujo de UI todavia.
+- Al recargar la pagina se cargan las rutas desde backend, pero no sus puntos ni su asignacion de camion.
 
 ## 3. Archivos clave actuales
 
-- `src/components/MapaDisenador.tsx`: coordina seleccion de camion, guardado, edicion, eliminacion y vista del mapa.
-- `src/components/MapaDisenadorView.tsx`: renderiza Leaflet, marcadores y una polilinea activa.
+- `src/components/MapaDiseñador.tsx`: coordina seleccion de camion, guardado, edicion, eliminacion y vista del mapa.
+- `src/components/MapaDiseñadorView.tsx`: renderiza Leaflet, marcadores y polilineas por capa.
 - `src/components/ResumenRutas.tsx`: lista rutas disenadas con acciones de ver, editar y eliminar.
-- `src/hooks/useRutaDisenador.ts`: maneja puntos activos de la ruta en edicion.
-- `src/hooks/useRutasDisenadas.ts`: mantiene rutas en memoria local.
-- `src/services/rutasApi.ts`: adapta la ruta local a payload de backend y realiza `POST /api/rutas/`.
-- `src/services/puntosRecoleccionApi.ts`: servicio propuesto para crear, editar, listar y eliminar puntos de `api/puntos-recoleccion`.
+- `src/hooks/useRutaDiseñador.ts`: maneja puntos activos de la ruta en edicion.
+- `src/hooks/useRutasDiseñadas.ts`: mantiene rutas en memoria, sincronizadas con `rutasApi.ts`.
+- `src/services/rutasApi.ts`: adapta la ruta local a payload de backend, `GET/POST/PUT/DELETE /api/rutas/`.
+- `src/services/puntosRecoleccionApi.ts`: CRUD de `api/puntos-recoleccion`.
 - `src/services/rutaService.ts`: convierte coordenadas a puntos y crea el objeto local de ruta.
-- `src/models/rutaDisenada.ts`: define `RutaDisenada`, `PuntoRuta` y helpers de coordenadas.
-- `src/utils/ColoresCamion.tsx`: posible fuente para asignar colores por camion.
+- `src/models/rutaDiseñada.ts`: define `RutaDiseñada`, `PuntoRuta` y helpers de coordenadas.
+- `src/utils/ColoresCamion.tsx`: asigna colores por camion (calculado en frontend, backend no guarda `color`).
+- `src/services/rutaCamionApi.ts`: **pendiente de crear**, para consumir el modulo real `/api/ruta-camion` (ver seccion 5 y `PLAN_ADAPTACION_ADMIN.md` seccion 6.1).
 
 Nota: algunos nombres de archivo usan la letra ene con tilde en el proyecto real. En este documento se escriben sin acento cuando sea necesario para facilitar lectura y busqueda.
 
@@ -166,62 +163,38 @@ Nota: algunos nombres de archivo usan la letra ene con tilde en el proyecto real
 
 ### 4.1 Multiples rutas
 
-Actualmente la experiencia esta pensada alrededor de una ruta activa. Se necesita que cada ruta sea una entidad independiente:
-
-- Ruta de Camion 1.
-- Ruta de Camion 2.
-- Ruta de Camion 3.
-- Etc.
-
-Cada una debe conservar sus puntos, datos, color y estado sin mezclarse con las demas.
+Ya resuelto en frontend: cada ruta es una entidad independiente con sus propios puntos, color y estado de visibilidad, separada por `ruta_id`/`camion_id`.
 
 ### 4.2 Colores independientes
 
-Cada ruta debe mostrarse con un color propio para que no se confunda con otras rutas.
-
-Regla recomendada:
-
-- Usar color por `camion_id` si cada camion solo puede tener una ruta activa.
-- Usar color por `ruta_id` si en el futuro un camion puede tener historial de varias rutas.
+Ya resuelto: color calculado en frontend a partir de `camion_id` (backend no guarda `color`).
 
 ### 4.3 Capas y visibilidad
 
-Debe existir un control de visualizacion:
-
-- Ver todas las rutas.
-- Ver solo la ruta de un camion.
-- Ocultar rutas no seleccionadas.
-- Mantener visible la ruta seleccionada mientras se edita.
-
-El mapa no debe mezclar puntos de una ruta con otra.
+Ya resuelto: selector de "todas las rutas" o "una ruta especifica", con filtro de rutas visibles.
 
 ### 4.4 Persistencia real en backend
 
-Las acciones del usuario deben sincronizarse con backend:
+Estado real confirmado (ver seccion 5 para el detalle):
 
-- Crear ruta base: `POST /api/rutas/`.
-- Crear puntos de la ruta: `POST /api/puntos-recoleccion`.
-- Listar rutas: `GET /api/rutas/`.
-- Listar puntos por ruta: `GET /api/puntos-recoleccion` filtrando por `ruta_id` si el backend lo permite.
-- Editar ruta base: `PUT` o `PATCH /api/rutas/:id`.
-- Editar puntos: `PUT` o `PATCH /api/puntos-recoleccion/:id`.
-- Eliminar ruta: `DELETE /api/rutas/:id`.
-- Eliminar puntos: `DELETE /api/puntos-recoleccion/:id`, o eliminacion en cascada desde backend al borrar una ruta.
-
-El estado local debe reflejar la respuesta real del backend.
+- Ruta base: `POST/GET/PUT/DELETE /api/rutas/` — implementado y funcionando, pero sin `camion_id`/`color`/`visible` en backend.
+- Relacion ruta-camion: `POST/GET/PUT/DELETE /api/ruta-camion/` — existe en backend, **falta integrarlo en frontend**.
+- Puntos de recoleccion: `POST/GET/PUT/DELETE /api/puntos-recoleccion` — servicio ya creado en frontend, falta terminar de integrarlo en el flujo de guardado/edicion de la UI.
+- Eliminacion en cascada de puntos al eliminar una ruta: no existe en backend: el frontend debe eliminar los puntos de una ruta explicitamente antes o despues de eliminar la ruta.
 
 ### 4.5 Separacion entre ruta y puntos
 
-El mapa no debe enviar todos los puntos como parte definitiva de `api/rutas` si esos puntos necesitan editarse de forma individual. El flujo correcto sera:
+El flujo correcto, ya soportado por los servicios existentes:
 
 1. Enviar la ruta base a `POST /api/rutas/`.
 2. Obtener el `ruta_id` devuelto por backend.
-3. Enviar cada punto a `POST /api/puntos-recoleccion` usando ese `ruta_id`.
-4. Guardar el identificador de cada punto para poder editarlo o eliminarlo despues.
+3. Enviar la asignacion de camion a `POST /api/ruta-camion/` con ese `ruta_id`.
+4. Enviar cada punto a `POST /api/puntos-recoleccion` usando ese `ruta_id`.
+5. Guardar el identificador de cada punto para poder editarlo o eliminarlo despues.
 
-## 5. Contrato recomendado con backend
+## 5. Contrato confirmado con backend
 
-Antes de implementar la sincronizacion completa, confirmar que el backend soporte estos endpoints o acordar sus equivalentes:
+Contrato real verificado por revision directa del codigo fuente de `gin-backend` (ver seccion 14 para el detalle completo).
 
 ```txt
 GET    /api/rutas/
@@ -229,60 +202,75 @@ GET    /api/rutas/:id
 POST   /api/rutas/
 PUT    /api/rutas/:id
 DELETE /api/rutas/:id
+GET    /api/rutas/activas
+
+GET    /api/ruta-camion/
+GET    /api/ruta-camion/:id
+GET    /api/ruta-camion/camion/:camion_id
+GET    /api/ruta-camion/ruta/:ruta_id
+GET    /api/ruta-camion/exists/:id
+POST   /api/ruta-camion/
+PUT    /api/ruta-camion/:id
+DELETE /api/ruta-camion/:id
 
 GET    /api/puntos-recoleccion
 GET    /api/puntos-recoleccion/:id
+GET    /api/puntos-recoleccion/ruta/:rutaId
 POST   /api/puntos-recoleccion
 PUT    /api/puntos-recoleccion/:id
 DELETE /api/puntos-recoleccion/:id
 ```
 
-Tambien confirmar si el backend ya acepta `camion_id`. Para este flujo es necesario que la ruta se relacione con un camion.
-
-Payload recomendado para crear o actualizar la ruta base:
+Payload real para crear o actualizar la ruta base (backend solo acepta estos campos; cualquier otro se ignora):
 
 ```json
 {
   "nombre": "Ruta Centro",
   "descripcion": "Ruta principal de recoleccion",
-  "camion_id": 1,
-  "color": "#2563eb"
+  "json_ruta": [{ "latitud": 16.62345, "longitud": -93.09321 }]
 }
 ```
 
-Si el backend no guarda `color`, el frontend puede calcularlo localmente a partir del camion.
-
-Una vez creada la ruta, backend debe devolver el `ruta_id`. Con ese `ruta_id`, cada punto se envia a `api/puntos-recoleccion` como coordenada real:
+`camion_id` y `color` **no** van en este payload. `color` se calcula en frontend. `camion_id` se guarda y consulta por separado:
 
 ```json
 {
-  "cp": 1,
+  "ruta_id": 10,
+  "camion_id": 1,
+  "fecha": "2026-07-19"
+}
+```
+
+enviado a `POST /api/ruta-camion/`.
+
+Payload real para cada punto, enviado a `POST /api/puntos-recoleccion` una vez que se tiene el `ruta_id`:
+
+```json
+{
+  "cp": "1",
   "lat": 16.62345,
   "lon": -93.09321,
   "ruta_id": 10
 }
 ```
 
-Significado recomendado:
+Advertencias confirmadas sobre este payload (ver seccion 14 para el detalle):
 
-- `cp`: consecutivo u orden del punto dentro de la ruta.
-- `lat`: latitud real del punto.
-- `lon`: longitud real del punto.
-- `ruta_id`: identificador devuelto por `POST /api/rutas/`.
-
-Si el backend usa otros nombres, por ejemplo `latitud` y `longitud`, crear un adaptador frontend para no contaminar el modelo interno.
+- `cp` debe enviarse como **string**, no numero: el backend lo tipa como `string` y lo guarda en la columna `direccion`.
+- `lat`/`lon` no se guardan en Postgres, solo se cachean en Redis: existe riesgo real de perdida de coordenadas si Redis pierde datos.
+- La tabla `punto_recoleccion` ya tiene columna `orden`, pero el codigo Go todavia no la lee ni la escribe: no enviar `orden` esperando que backend lo persista todavia.
 
 ## 6. Modelo frontend propuesto
 
 Actualizar el modelo interno de ruta para soportar capas y persistencia:
 
 ```ts
-export interface RutaDisenada {
+export interface RutaDiseñada {
   ruta_id: number | null;
-  camion_id: number;
+  camion_id: number | null; // resuelto via rutaCamionApi, no viene embebido en /api/rutas/
   nombre: string;
   descripcion: string;
-  color: string;
+  color: string; // calculado en frontend a partir de camion_id
   visible: boolean;
   puntos: PuntoRuta[];
 }
@@ -293,8 +281,8 @@ Actualizar tambien el modelo de punto para guardar el identificador real del bac
 ```ts
 export interface PuntoRuta {
   punto_id: number | null;
-  cp: number;
-  orden: number;
+  cp: string; // string, no numero: asi lo espera el backend
+  orden: number; // se mantiene en frontend; backend todavia no lo persiste
   lat: number;
   lon: number;
 }
@@ -302,9 +290,9 @@ export interface PuntoRuta {
 
 Notas:
 
-- `orden` puede mantenerse para el frontend si ya se usa internamente.
-- `cp` debe mapearse al valor que espera `api/puntos-recoleccion`.
-- Conviene normalizar a `lat` y `lon` en el modelo si el backend usara esos nombres.
+- `cp` debe mapearse como string al enviarse a `api/puntos-recoleccion`, aunque internamente se use para ordenar.
+- `orden` puede mantenerse en frontend mientras backend no lo persista; no depender de que sobreviva a un recargue completo hasta que backend actualice `PuntoRecoleccion`/`PostgresPuntoRecoleccion.go`.
+- `camion_id` debe resolverse cruzando con `/api/ruta-camion/ruta/:ruta_id`, no asumirse dentro de la respuesta de `GET /api/rutas/`.
 
 Opcional para estado de sincronizacion:
 
@@ -318,7 +306,7 @@ Esto permitiria mostrar errores si backend falla al guardar, editar o eliminar.
 
 ### 7.1 Servicio de API
 
-Ampliar `src/services/rutasApi.ts` para administrar la ruta base:
+`src/services/rutasApi.ts` ya administra la ruta base:
 
 ```ts
 listarRutas()
@@ -330,12 +318,12 @@ eliminarRuta(rutaId)
 
 Responsabilidades:
 
-- Convertir modelo frontend a DTO backend.
-- Convertir respuesta backend a `RutaDisenada`.
+- Convertir modelo frontend a DTO backend (solo `nombre`, `descripcion`, `json_ruta`).
+- Convertir respuesta backend a `RutaDiseñada`.
 - No depender de `json_ruta` para editar puntos individuales.
 - Manejar errores de `apiRequest`.
 
-Crear `src/services/puntosRecoleccionApi.ts` para administrar los puntos:
+`src/services/puntosRecoleccionApi.ts` ya administra los puntos:
 
 ```ts
 listarPuntosPorRuta(rutaId)
@@ -345,84 +333,57 @@ eliminarPuntoRecoleccion(puntoId)
 reemplazarPuntosDeRuta(rutaId, puntos)
 ```
 
-DTO recomendado para crear puntos:
+**Pendiente de crear** `src/services/rutaCamionApi.ts` para administrar la relacion ruta-camion:
 
 ```ts
-interface PuntoRecoleccionRequest {
-  cp: number;
-  lat: number;
-  lon: number;
-  ruta_id: number;
-}
+listarAsignaciones()
+obtenerAsignacionPorId(id)
+obtenerAsignacionPorRuta(rutaId)
+obtenerAsignacionPorCamion(camionId)
+crearAsignacion(rutaId, camionId, fecha)
+actualizarAsignacion(id, rutaId, camionId, fecha)
+eliminarAsignacion(id)
 ```
 
 `reemplazarPuntosDeRuta` debe definirse con cuidado:
 
-- Si backend permite eliminar puntos por `ruta_id`, borrar los puntos anteriores y recrearlos.
-- Si backend solo permite borrar por punto individual, primero listar puntos existentes y eliminarlos uno por uno.
-- Si se edita un solo punto, preferir `PUT/PATCH /api/puntos-recoleccion/:id`.
+- Backend permite borrar solo por punto individual (`DELETE /api/puntos-recoleccion/:id`); no hay borrado masivo por `ruta_id`.
+- Si se edita un solo punto, preferir `PUT /api/puntos-recoleccion/:id`.
 
 ### 7.2 Hook de rutas
 
-Rehacer o ampliar `useRutasDisenadas` para coordinar estado y backend:
+`useRutasDiseñadas` ya coordina estado y backend para la ruta base:
 
 ```ts
-rutas
+rutasDiseñadas
+rutasVisibles
 rutaSeleccionadaId
 modoVisualizacion
 cargando
 error
 cargarRutas()
-crearRuta()
-actualizarRuta()
+guardarRuta()
 eliminarRuta()
+obtenerRutaPorCamion()
 seleccionarRuta()
 verTodas()
-verSoloRuta()
-obtenerRutaPorCamion()
 ```
 
-Modos de visualizacion recomendados:
+Pendiente: integrar la carga de `camion_id` por ruta usando el futuro `rutaCamionApi.ts`, y la carga de puntos de cada ruta usando `puntosRecoleccionApi.listarPuntosPorRuta`.
+
+Modos de visualizacion ya implementados:
 
 ```ts
-type ModoVisualizacion = "todas" | "una";
+type ModoVisualizacionRutas = "todas" | "una";
 ```
 
 ### 7.3 Vista de mapa por capas
 
-Actualizar `MapaDisenadorView` para recibir rutas visibles:
-
-```ts
-rutasVisibles: RutaDisenada[];
-rutaEnEdicion?: RutaDisenada;
-puntosEnEdicion: Coordenada[];
-```
-
-El mapa debe renderizar:
-
-- Una `Polyline` por cada ruta visible.
-- Color propio para cada ruta.
-- Marcadores editables solo para la ruta en edicion.
-- Marcadores no editables u opcionales para rutas visibles no editadas.
+`MapaDiseñadorView` ya recibe rutas visibles y renderiza una `Polyline` por ruta con color propio, mas marcadores editables para la ruta en edicion.
 
 ### 7.4 Menu desplegable de rutas
 
-Crear o mejorar un control de seleccion:
-
-```txt
-Ver rutas:
-[ Todas las rutas ]
-[ Camion 1 - Ruta Centro ]
-[ Camion 2 - Ruta Norte ]
-[ Camion 3 - Ruta Sur ]
-```
-
-Comportamiento:
-
-- `Todas las rutas`: muestra todas las capas.
-- `Camion N`: muestra solo la ruta de ese camion.
-- `Editar`: cambia a modo edicion y oculta las demas rutas.
-- `Eliminar`: confirma y elimina en backend.
+Ya implementado en `MapaDiseñador.tsx`: selector con "Todas las rutas" y una opcion por ruta (`Camion N - Nombre`).
 
 ## 8. Flujo de usuario propuesto
 
@@ -434,32 +395,35 @@ Comportamiento:
 4. Si no tiene ruta, se permite dibujar una ruta nueva.
 5. Usuario agrega puntos en el mapa.
 6. Usuario finaliza ruta y llena formulario.
-7. Frontend envia `POST /api/rutas/`.
+7. Frontend envia `POST /api/rutas/` (solo `nombre`, `descripcion`, `json_ruta`).
 8. Backend responde con `ruta_id`.
-9. Frontend envia cada punto a `POST /api/puntos-recoleccion` con `cp`, `lat`, `lon` y `ruta_id`.
-10. Frontend guarda los ids devueltos por cada punto.
-11. La ruta queda guardada, visible y asociada al camion.
+9. Frontend envia `POST /api/ruta-camion/` con ese `ruta_id` y el `camion_id` seleccionado (pendiente de integrar).
+10. Frontend envia cada punto a `POST /api/puntos-recoleccion` con `cp` (string), `lat`, `lon` y `ruta_id`.
+11. Frontend guarda los ids devueltos por cada punto.
+12. La ruta queda guardada, visible y asociada al camion.
 
 ### 8.2 Editar ruta
 
 1. Usuario selecciona una ruta existente.
 2. El mapa muestra solo esa ruta en modo edicion.
 3. Usuario mueve puntos, agrega puntos o modifica formulario.
-4. Si cambia nombre, descripcion, camion o color, frontend envia `PUT /api/rutas/:id` o `PATCH /api/rutas/:id`.
-5. Si cambia un punto existente, frontend envia `PUT/PATCH /api/puntos-recoleccion/:id`.
-6. Si agrega un punto nuevo, frontend envia `POST /api/puntos-recoleccion` con el mismo `ruta_id`.
-7. Si elimina un punto, frontend envia `DELETE /api/puntos-recoleccion/:id`.
-8. La respuesta actualiza el estado local.
-9. La ruta conserva su color y camion.
+4. Si cambia nombre o descripcion, frontend envia `PUT /api/rutas/:id`.
+5. Si cambia el camion asignado, frontend envia `PUT /api/ruta-camion/:id` (pendiente de integrar).
+6. Si cambia un punto existente, frontend envia `PUT /api/puntos-recoleccion/:id`.
+7. Si agrega un punto nuevo, frontend envia `POST /api/puntos-recoleccion` con el mismo `ruta_id`.
+8. Si elimina un punto, frontend envia `DELETE /api/puntos-recoleccion/:id`.
+9. La respuesta actualiza el estado local.
+10. La ruta conserva su color (calculado en frontend) y camion.
 
 ### 8.3 Eliminar ruta
 
 1. Usuario selecciona eliminar.
 2. Se muestra confirmacion.
-3. Frontend elimina los puntos asociados si backend no tiene eliminacion en cascada.
-4. Frontend envia `DELETE /api/rutas/:id`.
-5. Si backend confirma, se elimina del estado local.
-6. Si estaba seleccionada, la vista cambia a todas o a ninguna ruta.
+3. Frontend elimina los puntos asociados explicitamente (backend no tiene eliminacion en cascada).
+4. Frontend elimina la asignacion en `/api/ruta-camion/:id` si existe (a confirmar si backend lo hace en cascada).
+5. Frontend envia `DELETE /api/rutas/:id`.
+6. Si backend confirma, se elimina del estado local.
+7. Si estaba seleccionada, la vista cambia a todas o a ninguna ruta.
 
 ### 8.4 Ver rutas
 
@@ -470,38 +434,25 @@ Comportamiento:
 
 ## 9. Orden recomendado de implementacion
 
-### 9.1 Base OpenStreetMap y arquitectura geografica
+### 9.1 Base OpenStreetMap y arquitectura geografica — COMPLETADA
 
-1. Centralizar URL de tiles, attribution, zoom, centro y limites en `src/constants/mapa.ts`.
-2. Crear `src/services/mapaGeoService.ts` para concentrar validaciones y conversiones de coordenadas.
-3. Mover o reutilizar ahi la validacion actual de limites de Suchiapa.
-4. Revisar que todos los componentes usen el mismo tipo `Coordenada = [number, number]`.
-5. Separar conceptualmente ruta en edicion, rutas guardadas y rutas visibles.
-6. Ajustar `MapaDisenadorView` para recibir configuracion de mapa desde constantes, no valores duplicados.
-7. Dejar preparado el modelo para una geometria futura generada por ruteo OSM, sin implementarla todavia.
+Toda esta base ya esta implementada: constantes centralizadas, `mapaGeoService.ts`, tipo `Coordenada`, separacion de ruta en edicion/guardadas/visibles, `MapaDiseñadorView` parametrizado.
 
-### 9.2 Nuevo a implementar despues de la base OSM
+### 9.2 Confirmado con backend y pendiente de integrar
 
-1. Confirmar contrato real del backend para rutas y camiones.
-2. Definir si `camion_id` se guarda en tabla de rutas o en una relacion aparte.
-3. Confirmar contrato real de `api/puntos-recoleccion`.
-4. Confirmar si los puntos usan `cp`, `lat`, `lon`, `ruta_id` y si devuelven `punto_id`.
-5. Actualizar `src/models/rutaDisenada.ts` con `color`, `visible` y `punto_id` por punto.
-6. Ampliar `src/services/rutasApi.ts` con `GET`, `POST`, `PUT/PATCH` y `DELETE` para ruta base.
-7. Crear `src/services/puntosRecoleccionApi.ts` para puntos.
-8. Crear adaptadores `backendToRutaDisenada`, `rutaDisenadaToBackend`, `puntoToBackend` y `backendToPunto`.
-9. Rehacer `useRutasDisenadas` para cargar rutas y sus puntos desde backend al iniciar.
-10. Implementar creacion persistente en dos pasos: crear ruta y luego crear puntos.
-11. Implementar edicion persistente de datos de ruta y puntos individuales.
-12. Implementar eliminacion persistente de puntos y ruta.
-13. Actualizar `MapaDisenadorView` para renderizar multiples polilineas por capas.
-14. Asignar colores por camion o por ruta.
-15. Crear menu desplegable para ver una ruta o todas.
-16. Separar claramente ruta visible y ruta en edicion.
-17. Ajustar `ResumenRutas` para mostrar estado, color, camion y acciones.
-18. Validar recarga de pagina: las rutas y sus puntos deben volver desde backend.
-19. Validar que editar una ruta no afecte rutas de otros camiones.
-20. Validar que eliminar una ruta no borre ni oculte rutas no relacionadas.
+1. ~~Confirmar contrato real del backend para rutas y camiones.~~ Completado, ver seccion 5 y 14.
+2. ~~Definir si `camion_id` se guarda en tabla de rutas o en una relacion aparte.~~ Confirmado: relacion aparte, `ruta_camion`.
+3. ~~Confirmar contrato real de `api/puntos-recoleccion`.~~ Completado, ver seccion 5 y 14.
+4. ~~Confirmar si los puntos usan `cp`, `lat`, `lon`, `ruta_id` y si devuelven `punto_id`.~~ Confirmado, con advertencia de tipo (`cp` string) y persistencia (`lat`/`lon` solo en Redis).
+5. ~~Crear `src/services/rutaCamionApi.ts` para el modulo `/api/ruta-camion`.~~ Completado.
+6. ~~Ajustar `src/models/rutaDiseñada.ts` para que `camion_id` se resuelva via `rutaCamionApi`, no se espere embebido en `Ruta`.~~ Completado: `camion_id` ahora es `number | null` y se resuelve en `useRutasDiseñadas.cargarRutas`.
+7. ~~Ajustar `puntosRecoleccionApi.ts`/`rutaService.ts` para enviar `cp` como string.~~ Completado: `PuntoRuta.cp` ahora es `string` en el modelo y en los adaptadores de `rutasApi.ts`/`puntosRecoleccionApi.ts`.
+8. ~~Rehacer `useRutasDiseñadas` para cargar, por cada ruta, su asignacion de camion y sus puntos desde backend al iniciar.~~ Completado (`enriquecerRuta` en `useRutasDiseñadas.ts`).
+9. ~~Implementar persistencia completa de puntos durante creacion y edicion de ruta.~~ Completado con `reemplazarPuntosDeRuta` (borra y recrea todos los puntos de la ruta en cada guardado; no hay diff parcial porque backend no lo soporta).
+10. ~~Implementar eliminacion explicita de puntos y de la asignacion ruta-camion al eliminar una ruta.~~ Completado (best-effort en `useRutasDiseñadas.eliminarRuta`).
+11. ~~Validar recarga de pagina: rutas, su camion asignado y sus puntos deben volver desde backend.~~ Implementado; falta la validacion manual/end-to-end contra un backend real corriendo (no se pudo ejecutar `npm run build`/levantar la app en este sandbox, ver seccion 14.5).
+12. Validar que editar una ruta no afecte rutas de otros camiones.
+13. Validar que eliminar una ruta no borre ni oculte rutas no relacionadas.
 
 ## 10. Validaciones obligatorias
 
@@ -514,9 +465,10 @@ Casos minimos a probar:
 - Ver todas las rutas.
 - Editar Camion 1 sin modificar Camion 2.
 - Eliminar Camion 1 sin afectar Camion 2.
-- Recargar pagina y confirmar que las rutas se cargan desde backend.
+- Recargar pagina y confirmar que las rutas, su camion asignado y sus puntos se cargan desde backend.
 - Intentar crear ruta para un camion que ya tiene ruta y mostrar opcion clara de editar o reemplazar.
 - Confirmar que `Limpiar` solo limpia la ruta en edicion, no elimina una ruta ya guardada.
+- Confirmar que `cp` se envia como string y no provoca error de validacion en backend.
 
 Comandos de validacion frontend:
 
@@ -529,11 +481,10 @@ El build ejecuta TypeScript mediante `tsc -b`.
 
 ## 11. Riesgos tecnicos
 
-- El backend podria no tener `camion_id` en rutas; sin esa relacion no se puede administrar ruta por camion de forma correcta.
-- Si el backend no soporta `PUT` o `DELETE` para puntos, habra que implementar endpoints o usar una estrategia temporal de reemplazo completo.
-- Si `api/rutas` no devuelve `ruta_id`, no se podran guardar puntos en `api/puntos-recoleccion`.
-- Si `api/puntos-recoleccion` no devuelve el id de cada punto, editar y eliminar puntos individuales sera dificil.
-- Si se guarda solo `json_ruta`, los puntos no podran administrarse individualmente desde `api/puntos-recoleccion`.
+- Las coordenadas `lat`/`lon` de los puntos solo se cachean en Redis, no se guardan en Postgres: riesgo real de perdida de datos si Redis se reinicia sin persistencia. Requiere cambio en backend, ver `REQUISITOS_BACKEND_PLAN_ADAPTACION_ADMIN.md`.
+- ~~El tipo de `cp` (string en backend, numero en el codigo frontend actual)~~ — corregido: `PuntoRuta.cp` ahora es `string` en el modelo y en los adaptadores. Pendiente confirmar contra backend real que el binding ya no falle.
+- La columna `orden` ya existe en la tabla `punto_recoleccion`, pero el backend no la usa: no asumir que se persiste hasta que backend lo confirme.
+- Eliminar una ruta no elimina en cascada sus puntos ni su asignacion en `ruta_camion`: el frontend debe hacerlo explicitamente para evitar registros huerfanos.
 - Dibujar muchas rutas con muchos puntos puede afectar rendimiento; conviene renderizar solo capas visibles.
 - Hay riesgo de mezclar ruta en edicion con rutas visibles si no se separan estados.
 - Si se usa `window.confirm` para todo, la experiencia puede sentirse limitada; a futuro conviene usar modales propios.
@@ -546,17 +497,18 @@ El build ejecuta TypeScript mediante `tsc -b`.
 - [x] Mover validaciones de coordenadas al servicio geografico.
 - [x] Normalizar conversiones entre coordenadas frontend y DTO backend.
 - [x] Separar ruta en edicion, rutas guardadas y rutas visibles.
-- [x] Preparar `MapaDisenadorView` para multiples capas sobre OpenStreetMap.
+- [x] Preparar `MapaDiseñadorView` para multiples capas sobre OpenStreetMap.
 - [x] Dejar documentada la integracion futura con OSRM, GraphHopper, Valhalla u OpenRouteService.
-- [ ] Confirmar endpoints reales disponibles en backend.
-- [ ] Confirmar si backend acepta y devuelve `camion_id`.
-- [ ] Confirmar formato exacto de respuesta de `GET /api/rutas/`.
-- [ ] Confirmar formato exacto de `api/puntos-recoleccion`.
-- [ ] Confirmar si `api/puntos-recoleccion` recibe `cp`, `lat`, `lon`, `ruta_id`.
-- [ ] Confirmar si `api/puntos-recoleccion` devuelve id del punto creado.
-- [x] Actualizar modelo `RutaDisenada`.
+- [x] Confirmar endpoints reales disponibles en backend (dos rondas, ver seccion 14).
+- [x] Confirmar si backend acepta y devuelve `camion_id` en `Ruta`. Confirmado: no. Se resuelve via `/api/ruta-camion`.
+- [x] Confirmar formato exacto de respuesta de `GET /api/rutas/`. Confirmado: `{ ruta_id, nombre, descripcion, json_ruta, eliminado, created_at }`.
+- [x] Confirmar formato exacto de `api/puntos-recoleccion`. Confirmado, ver seccion 14.
+- [x] Confirmar si `api/puntos-recoleccion` recibe `cp`, `lat`, `lon`, `ruta_id`. Confirmado con advertencia: `cp` es string, `lat`/`lon` no persisten en Postgres.
+- [x] Confirmar si `api/puntos-recoleccion` devuelve id del punto creado. Confirmado: devuelve `punto_id`.
+- [x] Confirmar si existe relacion ruta-camion en backend. Confirmado: si, via modulo `/api/ruta-camion` (agregado en la segunda revision).
+- [x] Actualizar modelo `RutaDiseñada`.
 - [x] Actualizar modelo `PuntoRuta` con `punto_id`, `cp`, `lat` y `lon`.
-- [x] Agregar color por camion/ruta.
+- [x] Agregar color por camion/ruta (calculado en frontend).
 - [x] Implementar `listarRutas` en `rutasApi.ts`.
 - [x] Implementar `actualizarRuta` en `rutasApi.ts`.
 - [x] Implementar `eliminarRuta` en `rutasApi.ts`.
@@ -567,13 +519,19 @@ El build ejecuta TypeScript mediante `tsc -b`.
 - [x] Implementar `eliminarPuntoRecoleccion`.
 - [x] Crear adaptadores frontend/backend.
 - [x] Cargar rutas desde backend al abrir el mapa.
-- [ ] Cargar puntos de cada ruta desde backend.
+- [x] Crear `rutaCamionApi.ts` para `/api/ruta-camion`.
+- [x] Cargar la asignacion de camion de cada ruta desde `/api/ruta-camion` al abrir el mapa.
+- [x] Cargar puntos de cada ruta desde `api/puntos-recoleccion` al abrir el mapa (si no hay puntos persistidos todavia, se usa el fallback de `json_ruta`).
 - [x] Persistir creacion de ruta contra `api/rutas`.
-- [ ] Persistir creacion de puntos contra `api/puntos-recoleccion`.
+- [x] Enviar `cp` como string a `api/puntos-recoleccion` (corregido en el modelo `PuntoRuta` y los adaptadores).
+- [x] Persistir creacion de puntos contra `api/puntos-recoleccion` (via `reemplazarPuntosDeRuta` al guardar la ruta en `MapaDiseñador.tsx`).
+- [x] Persistir creacion de asignacion ruta-camion contra `api/ruta-camion`.
 - [x] Persistir edicion de ruta contra `api/rutas`.
-- [ ] Persistir edicion de puntos contra `api/puntos-recoleccion`.
-- [ ] Persistir eliminacion de puntos contra `api/puntos-recoleccion`.
+- [x] Persistir edicion de puntos contra `api/puntos-recoleccion`. Para una ruta ya existente (modo borrador, `PLAN_ADAPTACION_ADMIN.md` Fase 3) se usa `guardarPuntosBorrador`: crea solo los puntos nuevos y elimina solo los marcados, en vez de borrar y recrear todo. Para una ruta nueva se sigue usando `reemplazarPuntosDeRuta`.
+- [x] Persistir edicion de asignacion ruta-camion contra `api/ruta-camion` (si cambia el camion).
+- [x] Persistir eliminacion de puntos contra `api/puntos-recoleccion` (al eliminar una ruta, y como parte de `reemplazarPuntosDeRuta` al editar).
 - [x] Persistir eliminacion de ruta contra `api/rutas`.
+- [x] Persistir eliminacion de asignacion ruta-camion contra `api/ruta-camion` (best-effort al eliminar ruta).
 - [x] Crear selector desplegable de rutas.
 - [x] Agregar opcion "Todas las rutas".
 - [x] Agregar opcion "Solo ruta seleccionada".
@@ -588,14 +546,58 @@ El build ejecuta TypeScript mediante `tsc -b`.
 
 ## 13. Siguiente paso recomendado
 
-El siguiente paso practico debe ser confirmar el contrato real del backend para dos recursos: `api/rutas` y `api/puntos-recoleccion`.
+Actualizado (2026-07-19, tras completar la integracion de `ruta-camion` y `puntos-recoleccion`):
 
-El frontend ya tiene servicios y adaptadores preparados para ambos recursos. Falta validar con backend:
+Ya estan implementados: `rutaCamionApi.ts`, la correccion de tipo de `cp`, la carga de asignacion de camion y puntos por ruta al abrir el mapa, y la persistencia de creacion/edicion/eliminacion de puntos y de la asignacion ruta-camion durante el flujo de guardado/eliminacion de una ruta (ver checklist, seccion 12).
 
-- formato real de `GET /api/rutas/`;
-- si `api/rutas` acepta y devuelve `camion_id` y `color`;
-- si `api/puntos-recoleccion` recibe `cp`, `lat`, `lon`, `ruta_id`;
-- si `api/puntos-recoleccion` devuelve `punto_id`;
-- si al eliminar una ruta el backend elimina sus puntos en cascada.
+Verificado con `npx tsc -b` y `npx eslint .` (limpios en cada paso). No se pudo validar `npm run build` end-to-end por un problema de entorno del sandbox (falta el binario nativo `@rollup/rollup-linux-x64-gnu`), ni probar el flujo contra un backend real corriendo.
 
-Cuando ese contrato quede confirmado, se debe activar el flujo completo de persistencia de puntos individuales: crear, editar, eliminar y recargar puntos desde `api/puntos-recoleccion`.
+Pendiente real, no resuelto desde frontend:
+
+- Validar manualmente (con la app corriendo contra el backend real) que `cp` como string no rompe el binding en `POST/PUT /api/puntos-recoleccion`.
+- Confirmar que el patron "borrar todos los puntos y recrearlos" (`reemplazarPuntosDeRuta`) no genere problemas de rendimiento o de IDs cambiantes en uso real; el plan del administrador (`PLAN_ADAPTACION_ADMIN.md` Fase 1-3) propone un modelo de borrador con IDs temporales y deteccion de cambios que evitaria este borrar-y-recrear completo.
+
+Actualizado (2026-07-20): `PLAN_ADAPTACION_ADMIN.md` ya completo en sus Fases 0 a 3 (contrato confirmado, modelos de borrador, servicio de borrador, integracion en UI). El patron de "borrar y recrear" ya fue reemplazado por deteccion de cambios fina (`guardarPuntosBorrador`) para rutas ya existentes. Pendiente real: prueba manual en vivo (agregar/mover/guardar/recargar contra un backend corriendo). Las Fases 4 a 7 de ese plan (sincronizacion por lotes, geometria vial, `json_ruta` oficial, publicacion) siguen bloqueadas y documentadas ahi mismo, cada una con la razon tecnica exacta por la que no se puede implementar con el backend actual.
+
+## 14. Contrato real confirmado (backend `gin-backend`)
+
+Revisado en modo solo lectura directamente sobre el codigo fuente, en dos rondas: 2026-07-19 (primera revision) y 2026-07-19 (segunda revision, tras actualizacion del equipo de backend). Esta seccion es la referencia autoritativa; reemplaza cualquier supuesto de las secciones anteriores del documento.
+
+### 14.1 `api/rutas`
+
+- Endpoints reales: `POST /api/rutas/`, `GET /api/rutas/`, `GET /api/rutas/:id`, `PUT /api/rutas/:id`, `DELETE /api/rutas/:id`, `GET /api/rutas/activas`.
+- La entidad `Ruta` en backend solo tiene: `ruta_id`, `nombre`, `descripcion`, `json_ruta`, `eliminado`, `created_at`.
+- No existe `camion_id`, `color` ni `visible` en la tabla `ruta` ni en la entidad Go. La tabla real usa `colonia_id` (no `camion_id`).
+- Cuando el frontend envia `camion_id` y `color` en el payload de `POST/PUT /api/rutas/`, el backend los ignora silenciosamente.
+- `DELETE /api/rutas/:id` hace soft delete solo en la tabla `ruta`. No elimina ni marca los `punto_recoleccion` asociados: quedan huerfanos.
+
+### 14.2 `api/ruta-camion` (agregado en la segunda revision)
+
+- Endpoints reales: `POST /api/ruta-camion/`, `GET /api/ruta-camion/`, `GET /api/ruta-camion/:id`, `GET /api/ruta-camion/camion/:camion_id`, `GET /api/ruta-camion/ruta/:ruta_id`, `GET /api/ruta-camion/exists/:id`, `PUT /api/ruta-camion/:id`, `DELETE /api/ruta-camion/:id`.
+- Entidad `RutaCamion`: `ruta_camion_id`, `ruta_id`, `camion_id`, `fecha`, `created_at`, `eliminado`.
+- Resuelve la relacion ruta-camion como recurso separado. El frontend debe cruzar `GET /api/rutas/` con `GET /api/ruta-camion/ruta/:ruta_id` para saber que camion tiene asignada cada ruta.
+- Pendiente confirmar con backend: si eliminar una ruta o un camion marca automaticamente como eliminada la asignacion correspondiente, o si el frontend debe hacerlo explicitamente.
+
+### 14.3 `api/puntos-recoleccion`
+
+- Endpoints reales: `POST /api/puntos-recoleccion/`, `GET /api/puntos-recoleccion/`, `GET /api/puntos-recoleccion/:id`, `GET /api/puntos-recoleccion/ruta/:rutaId`, `PUT /api/puntos-recoleccion/:id`, `DELETE /api/puntos-recoleccion/:id`.
+- La entidad `PuntoRecoleccion` en Go declara `punto_id`, `ruta_id`, `cp` (tipo `string`), `lat`, `lon`, `eliminado`, `created_at`.
+- Riesgo de tipos: el frontend envia `cp` como numero; el backend lo espera como `string`. Puede fallar el binding JSON o guardar un valor inesperado.
+- Riesgo critico de persistencia: el `INSERT`/`UPDATE` real en Postgres solo guarda `ruta_id` y el valor de `cp` (en la columna `direccion`). Las coordenadas `lat`/`lon` no se guardan en Postgres; solo se cachean en Redis bajo la llave `point:<punto_id>`. Si Redis pierde datos, las coordenadas de los puntos se pierden de forma permanente aunque el punto siga existiendo en la base de datos.
+- `GET /ruta/:rutaId` y demas lecturas hidratan `lat`/`lon` leyendo Redis; si no hay dato en Redis, quedan en 0.
+- Agregado en la segunda revision: la tabla `punto_recoleccion` ahora tiene columna `orden` (`DOUBLE PRECISION`), pero el codigo Go (`PuntoRecoleccion` entity y `PostgresPuntoRecoleccion.go`) no la usa todavia en ningun INSERT/UPDATE/SELECT. El esquema esta listo, el codigo pendiente.
+
+### 14.4 Sobre `PLAN_ADAPTACION_ADMIN.md`
+
+Confirmado en ambas revisiones que no existe en backend:
+
+- `POST /api/puntos-recoleccion/sync`.
+- Endpoint de calculo de geometria vial.
+- `PATCH /api/rutas/:id/json-ruta` ni `/estado`.
+- Ningun campo ni tabla de estado de publicacion (`BORRADOR`/`VALIDA`/`PUBLICADA`) para rutas.
+
+Los modulos nuevos agregados en la segunda revision (Camion, EstadoCamion, TipoCamion, HistorialAsignacionCamion, telemetria, arribo) son para tracking operativo del camion en tiempo real; no aplican al modulo de mapa/disenador de rutas.
+
+### 14.5 Implicacion practica
+
+Las Fases 1 a 3 de `PLAN_ADAPTACION_ADMIN.md` (modelos de borrador, servicio de borrador, integracion en UI) avanzaron porque son logica de frontend que no depende de los endpoints faltantes. La Fase 1.5 de ese mismo plan (integrar `/api/ruta-camion`) tambien esta completa. Las Fases 4 a 7 (sync, geometria vial, `json_ruta` oficial, publicacion) siguen bloqueadas: cada una tiene, en `PLAN_ADAPTACION_ADMIN.md` seccion 11, la razon tecnica especifica (con evidencia del codigo fuente y de `docs/swagger.json`) por la que no existe el endpoint correspondiente en backend. Este agente no debe implementar esos endpoints en `gin-backend` sin autorizacion explicita, ya que las reglas del proyecto piden trabajar unicamente en `map-view`.
