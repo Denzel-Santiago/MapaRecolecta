@@ -61,7 +61,7 @@ export default function MapaPage({ onLogout }: { onLogout: () => void }) {
       ) : (
         <MapaMonitoreo
           regresar={() => setVistaActual("diseñador")}
-          ruta={rutaMonitoreada ? puntosRutaACoordenadas(rutaMonitoreada.puntos) : []}
+          ruta={rutaMonitoreada ? rutaMonitoreada.geometria ?? puntosRutaACoordenadas(rutaMonitoreada.puntos) : []}
         />
       )}
     </div>

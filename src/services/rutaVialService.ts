@@ -1,11 +1,27 @@
 import type { Coordenada } from "../models/geo";
+import {
+  ajustarPuntoACalleLocal,
+  construirGeometriaLocalPorCalles,
+  type PuntoSobreCalle,
+} from "./callejeroLocalService";
 
 const OSRM_DEMO_BASE_URL = "https://router.project-osrm.org";
+const OSRM_DEFAULT_PROFILE = "driving";
 
 export interface GeometriaVialResultado {
   puntos: Coordenada[];
   distanciaMetros: number;
   duracionSegundos: number;
+  origen: "osrm" | "local";
+}
+
+interface RespuestaNearestOsrm {
+  code?: string;
+  waypoints?: Array<{
+    location?: [number, number];
+    distance?: number;
+    name?: string;
+  }>;
 }
 
 /** Error especifico de este servicio, para poder distinguirlo de otros fallos de red en la UI. */
@@ -25,6 +41,10 @@ function coordenadaAOsrm(coordenada: Coordenada): string {
   return `${coordenada[1]},${coordenada[0]}`;
 }
 
+function obtenerPerfilOsrm(perfil?: string): string {
+  return perfil || import.meta.env.VITE_OSRM_PROFILE || OSRM_DEFAULT_PROFILE;
+}
+
 /**
  * Convierte la respuesta cruda de OSRM (`GET /route/v1/driving/...`) a
  * nuestro formato interno. Funcion pura, separada de `obtenerGeometriaVial`
@@ -41,7 +61,7 @@ export function parsearRespuestaOsrm(json: unknown): GeometriaVialResultado {
     throw new ErrorGeometriaVial("El motor de ruteo no encontro una ruta valida entre los puntos.");
   }
 
-  const [ruta] = respuesta.routes;
+  const ruta = [...respuesta.routes].sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0))[0];
   const coordenadasOsrm = ruta.geometry?.coordinates;
 
   if (!coordenadasOsrm || coordenadasOsrm.length === 0) {
@@ -52,7 +72,54 @@ export function parsearRespuestaOsrm(json: unknown): GeometriaVialResultado {
     puntos: coordenadasOsrm.map(([lon, lat]): Coordenada => [lat, lon]),
     distanciaMetros: ruta.distance ?? 0,
     duracionSegundos: ruta.duration ?? 0,
+    origen: "osrm",
   };
+}
+
+export function parsearRespuestaNearestOsrm(json: unknown): PuntoSobreCalle {
+  if (typeof json !== "object" || json === null) {
+    throw new ErrorGeometriaVial("Respuesta invalida al validar calle.");
+  }
+
+  const respuesta = json as RespuestaNearestOsrm;
+  const [waypoint] = respuesta.waypoints ?? [];
+  const [lon, lat] = waypoint?.location ?? [];
+
+  if (respuesta.code !== "Ok" || lat === undefined || lon === undefined) {
+    throw new ErrorGeometriaVial("No se encontro una calle valida cerca del punto.");
+  }
+
+  return {
+    coordenada: [lat, lon],
+    distanciaMetros: waypoint.distance ?? 0,
+    calleId: waypoint.name ?? "osrm",
+    nombreCalle: waypoint.name || "Calle detectada",
+    tipo: "horizontal",
+  };
+}
+
+export async function ajustarPuntoACalle(
+  punto: Coordenada,
+  baseUrl: string = import.meta.env.VITE_OSRM_BASE_URL ?? OSRM_DEMO_BASE_URL,
+  perfil?: string
+): Promise<PuntoSobreCalle> {
+  const fallbackLocal = ajustarPuntoACalleLocal(punto);
+  const perfilOsrm = obtenerPerfilOsrm(perfil);
+
+  try {
+    const respuesta = await fetch(`${baseUrl}/nearest/v1/${perfilOsrm}/${coordenadaAOsrm(punto)}?number=1`);
+    if (!respuesta.ok) {
+      throw new ErrorGeometriaVial(`El validador vial respondio con error (${respuesta.status}).`);
+    }
+
+    return parsearRespuestaNearestOsrm(await respuesta.json());
+  } catch {
+    if (fallbackLocal.valido && fallbackLocal.punto) {
+      return fallbackLocal.punto;
+    }
+
+    throw new ErrorGeometriaVial(fallbackLocal.mensaje ?? "El punto no esta sobre una calle valida.");
+  }
 }
 
 /**
@@ -79,23 +146,46 @@ export function parsearRespuestaOsrm(json: unknown): GeometriaVialResultado {
  */
 export async function obtenerGeometriaVial(
   puntos: Coordenada[],
-  baseUrl: string = import.meta.env.VITE_OSRM_BASE_URL ?? OSRM_DEMO_BASE_URL
+  baseUrl: string = import.meta.env.VITE_OSRM_BASE_URL ?? OSRM_DEMO_BASE_URL,
+  perfil?: string
 ): Promise<GeometriaVialResultado> {
   if (puntos.length < 2) {
     throw new ErrorGeometriaVial("Se necesitan al menos 2 puntos para calcular la geometria vial.");
   }
 
-  const coordenadasUrl = puntos.map(coordenadaAOsrm).join(";");
-  const url = `${baseUrl}/route/v1/driving/${coordenadasUrl}?overview=full&geometries=geojson`;
+  const perfilOsrm = obtenerPerfilOsrm(perfil);
+  const puntosAjustados = await Promise.all(puntos.map((punto) => ajustarPuntoACalle(punto, baseUrl, perfilOsrm)));
+  const coordenadasUrl = puntosAjustados.map((punto) => coordenadaAOsrm(punto.coordenada)).join(";");
+  const url = `${baseUrl}/route/v1/${perfilOsrm}/${coordenadasUrl}?overview=full&geometries=geojson&alternatives=true`;
 
   let respuesta: Response;
   try {
     respuesta = await fetch(url);
   } catch {
-    throw new ErrorGeometriaVial("No se pudo contactar al motor de ruteo (revisa tu conexion a internet).");
+    const fallback = construirGeometriaLocalPorCalles(puntos);
+    if (fallback.valido && fallback.geometria) {
+      return {
+        puntos: fallback.geometria,
+        distanciaMetros: 0,
+        duracionSegundos: 0,
+        origen: "local",
+      };
+    }
+
+    throw new ErrorGeometriaVial(fallback.mensaje ?? "No se pudo contactar al motor de ruteo.");
   }
 
   if (!respuesta.ok) {
+    const fallback = construirGeometriaLocalPorCalles(puntos);
+    if (fallback.valido && fallback.geometria) {
+      return {
+        puntos: fallback.geometria,
+        distanciaMetros: 0,
+        duracionSegundos: 0,
+        origen: "local",
+      };
+    }
+
     throw new ErrorGeometriaVial(`El motor de ruteo respondio con error (${respuesta.status}).`);
   }
 

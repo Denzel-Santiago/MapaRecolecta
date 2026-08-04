@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
-import { canAccessDesigner, login, type AuthSession } from "../../services/authService";
-import { OFFLINE_CREDENCIALES, OFFLINE_MODE } from "../../services/offlineMode";
+import { canAccessDesigner, login, loginOffline, type AuthSession } from "../../services/authService";
+import { OFFLINE_CREDENCIALES, estaModoOfflineActivo } from "../../services/offlineMode";
 import "./LoginPage.css";
 
 export default function LoginPage({ onAuthenticated }: { onAuthenticated: (session: AuthSession) => void }) {
-  const [email, setEmail] = useState(OFFLINE_MODE ? OFFLINE_CREDENCIALES.email : "");
-  const [password, setPassword] = useState(OFFLINE_MODE ? OFFLINE_CREDENCIALES.password : "");
+  const offlineInicial = estaModoOfflineActivo();
+  const [email, setEmail] = useState(offlineInicial ? OFFLINE_CREDENCIALES.email : "");
+  const [password, setPassword] = useState(offlineInicial ? OFFLINE_CREDENCIALES.password : "");
+  const [offlineActivo, setOfflineActivo] = useState(offlineInicial);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -30,13 +32,28 @@ export default function LoginPage({ onAuthenticated }: { onAuthenticated: (sessi
     }
   };
 
+  const entrarOffline = () => {
+    setError(null);
+    setLoading(true);
+
+    try {
+      const session = loginOffline();
+      setOfflineActivo(true);
+      onAuthenticated(session);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo entrar en modo offline.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="login-page">
       <section className="login-panel" aria-label="Inicio de sesion">
         <div className="login-copy">
           <p className="login-kicker">Recolecta</p>
           <h1>Diseñador de rutas</h1>
-          {OFFLINE_MODE && (
+          {offlineActivo && (
             <p className="login-offline-aviso" role="status">
               Modo offline activo: no se usa el backend. Credencial de prueba precargada
               ({OFFLINE_CREDENCIALES.email} / {OFFLINE_CREDENCIALES.password}).
@@ -73,6 +90,10 @@ export default function LoginPage({ onAuthenticated }: { onAuthenticated: (sessi
 
           <button className="login-button" type="submit" disabled={loading}>
             {loading ? "CARGANDO..." : "ACEPTAR"}
+          </button>
+
+          <button className="login-button login-button-secondary" type="button" onClick={entrarOffline} disabled={loading}>
+            Entrar en modo offline
           </button>
         </form>
       </section>

@@ -48,6 +48,7 @@ export function exportarRutas(rutas: RutaDiseñada[]): RutaDiseñada[] {
     .map((ruta) => ({
       ...ruta,
       puntos: ruta.puntos.map((punto) => ({ ...punto })),
+      geometria: ruta.geometria ? [...ruta.geometria] : undefined,
     }));
 }
 

@@ -1,8 +1,38 @@
 # PLAN_MAPA_COMPLETO
 
-Este documento reune en un solo lugar todo el contexto del modulo de mapa de Recolecta: como funciona hoy, que le falta, que pide el administrador y como sera el nuevo flujo de captura de puntos por detector. A partir de ahora este es el documento de referencia unico para planear trabajo sobre el mapa; no se van a crear mas archivos de plan sueltos. `MAPA-FUNCIONAMIENTO.md`, `PLAN_DE_SEGUIMIENTO.md`, `PLAN_ADAPTACION_ADMIN.md` y `PLAN_FLUJO_DETECTOR.md` siguen existiendo como material de referencia detallado, pero para saber "que falta hacer en el mapa" basta con leer este archivo.
+Este documento reune en un solo lugar todo el contexto del modulo de mapa de Recolecta: como funciona hoy, que le falta, que pide el administrador y como sera el nuevo flujo de captura de puntos por detector. A partir de ahora este es el documento de referencia unico para planear trabajo sobre el mapa; no se van a crear mas archivos de plan sueltos ni se debe depender de planes anteriores.
 
 `REGLAS_PARA_EL_AGENTE.md` sigue aplicando igual: analizar antes de programar, no romper lo que ya funciona, no asumir contratos de backend sin confirmarlos, y correr `npm run lint` y `npm run build` despues de cualquier cambio de codigo.
+
+---
+
+## 0. Actualizacion vigente: restriccion vial y ruta consumible por moviles
+
+Objetivo principal: el mapa debe servir como creador de rutas y como fuente para telefonos moviles que consumiran la ruta del camion de basura, mostraran su avance y permitiran ver su ubicacion sobre el trayecto. Por eso ya no se debe tratar una ruta como una simple linea recta entre clics.
+
+Cambios implementados en esta version:
+
+- Se agrego una capa de restriccion vial en `src/services/callejeroLocalService.ts`.
+- Cada clic del usuario se ajusta a una calle cercana antes de agregarse a la ruta.
+- Si el clic esta fuera de Suchiapa o demasiado lejos de una calle valida, se rechaza.
+- `rutaVialService.ts` intenta validar/calcular con OSRM (`nearest` + `route`) y usa un callejero local minimo como respaldo de prueba cuando no hay internet.
+- El ajuste online ya no compite contra la malla local: si OSRM responde, se usa OSRM; la red local solo entra como respaldo offline.
+- El diseñador permite comparar perfil vehicular (`driving`, respeta sentidos) contra perfil de cobertura corta (`foot`, util para detectar si un rodeo viene de sentidos de calle).
+- `Finalizar Ruta` queda bloqueado hasta que exista una geometria vial oficial calculada.
+- `RutaDiseñada` ahora acepta `geometria?: Coordenada[]`; esa geometria representa el camino por calles que debe consumir el monitoreo o una app movil.
+- `MapaPage.tsx` usa `ruta.geometria` para monitoreo cuando existe, y solo cae a los puntos de control como compatibilidad.
+- Las rutas guardadas en memoria/offline preservan `geometria` para pruebas locales.
+
+Plan inmediato para completar esta linea sin romper la logica existente:
+
+1. Reemplazar el callejero local minimo por la red real de Suchiapa: esquinas, calles permitidas, sentidos si aplican y restricciones de paso.
+2. Confirmar con backend si `json_ruta` guardara la geometria completa, si habra un campo separado, o si se expondra un endpoint de publicacion para moviles.
+3. Mantener separados `puntos` y `geometria`: los puntos son controles/paradas; la geometria es el camino real.
+4. Guardar/publicar solo rutas con geometria valida por calles.
+5. En moviles, consumir la geometria publicada y la ubicacion real del camion; no recalcular la ruta desde puntos sueltos.
+6. Cuando exista red local completa, el modo offline debe rutear sobre esa red en vez de usar solo la malla minima de prueba actual.
+
+Nota importante: el callejero local incluido ahora es una base funcional para probar la restriccion y el flujo offline, no el mapa completo final de Suchiapa. No se debe vender como precision final hasta cargar la red real del pueblo.
 
 ---
 
@@ -67,11 +97,11 @@ El estado de todas las rutas disenadas vive en el hook `useRutasDiseñadas.ts`, 
 - La edicion de una ruta existente no confirma un `PUT`/`PATCH` real de cada punto por separado.
 - Los camiones disponibles en el selector estan fijos (1, 2, 3), no vienen de backend.
 - El monitoreo es una simulacion local, no sigue la posicion real de un camion.
-- La ruta pintada en el mapa es siempre una linea recta entre los puntos que el usuario marco; no sigue calles reales todavia.
+- La ruta pintada en edicion ya puede calcular geometria por calles y bloquear guardado sin geometria valida. Sigue pendiente reemplazar la red local minima por el callejero completo de Suchiapa y confirmar persistencia/publicacion con backend.
 
 ---
 
-## 5. Lo que pide el administrador (plan obligatorio, ya documentado en `PLAN_ADAPTACION_ADMIN.md`)
+## 5. Lo que pide el administrador
 
 El administrador del proyecto definio una evolucion obligatoria para la siguiente etapa del mapa. La idea central es separar responsabilidades que hoy estan mezcladas:
 
@@ -306,9 +336,9 @@ Ninguna de estas etapas rompe las anteriores: el flujo actual de clic libre sigu
 
 ## 10. Contrato de backend: confirmado contra el swagger real
 
-**[ACTUALIZADO]** Esta seccion originalmente era una lista de preguntas abiertas. Se reviso el swagger real (`/api/swagger/doc.json`, ver `REQUISITOS_BACKEND_MAPA.md` para el detalle completo con evidencia) y ahora la mayoria tiene respuesta confirmada:
+**[ACTUALIZADO]** Esta seccion originalmente era una lista de preguntas abiertas. Se reviso el swagger real (`/api/swagger/doc.json`) y ahora la mayoria tiene respuesta confirmada:
 
-- **`GET /api/rutas/` y si acepta/devuelve `camion_id`/`color`: CONFIRMADO QUE NO.** La entidad `Ruta` real solo tiene `ruta_id`, `nombre`, `descripcion`, `json_ruta`, `eliminado`, `created_at`. El frontend manda `camion_id`/`color` en el payload de guardado, pero Go los descarta en silencio al no existir esos campos, y al leer una ruta de vuelta el `camion_id` cae a `0`. **Este es un bug activo hoy**, no solo una pregunta pendiente: en cuanto se recarga la pagina o se vuelve a listar desde backend, se pierde la asociacion ruta-camion. Requiere un cambio de backend (agregar las columnas, o un recurso de asignacion ruta-camion); no se puede resolver solo en el frontend porque se confirmo que la app movil ya consume `json_ruta` como un arreglo plano de `{latitud, longitud}` y cambiar esa forma arriesga romperla. Ver `REQUISITOS_BACKEND_MAPA.md`, seccion 2.
+- **`GET /api/rutas/` y si acepta/devuelve `camion_id`/`color`: CONFIRMADO QUE NO.** La entidad `Ruta` real solo tiene `ruta_id`, `nombre`, `descripcion`, `json_ruta`, `eliminado`, `created_at`. El frontend manda `camion_id`/`color` en el payload de guardado, pero Go los descarta en silencio al no existir esos campos, y al leer una ruta de vuelta el `camion_id` cae a `0`. **Este es un bug activo hoy**, no solo una pregunta pendiente: en cuanto se recarga la pagina o se vuelve a listar desde backend, se pierde la asociacion ruta-camion. Requiere un cambio de backend (agregar las columnas, o un recurso de asignacion ruta-camion); no se puede resolver solo en el frontend porque se confirmo que la app movil ya consume `json_ruta` como un arreglo plano de `{latitud, longitud}` y cambiar esa forma arriesga romperla.
 - **`POST /api/puntos-recoleccion/sync`: CONFIRMADO QUE NO EXISTE.** `VITE_SYNC_PUNTOS_ENABLED` debe seguir en `false`. No es bloqueante: se puede lograr el mismo resultado con los endpoints individuales que si existen (`POST`/`PUT`/`DELETE` de `/api/puntos-recoleccion/{id}`), aplicando el diff que ya calcula `construirPayloadSync`.
 - **`api/puntos-recoleccion` recibe `cp`, `lat`, `lon`, `ruta_id`: CONFIRMADO, y ya corregido.** `cp` es `string` en el swagger; el frontend lo trataba como `number`. Se corrigio: `puntoToBackend` (`puntosRecoleccionApi.ts`) y `construirPayloadSync` (`rutaBorradorService.ts`) ahora mandan `cp: String(orden)` siempre -- nunca un valor de `cp` guardado aparte que se pudiera desincronizar si el punto se reordena -- y `backendToPuntoRuta` (`rutasApi.ts`) ahora tolera leer `cp` como string o number de vuelta. Esto es lo que responde a "guardar la secuencia": cada punto lleva su propia coordenada real MAS un numero de secuencia explicito (`cp`), derivado siempre de `orden` en vez de repetirse por separado. Probado con un caso nuevo en `rutaBorradorService.test.ts`.
 - **Si al eliminar una ruta se eliminan sus puntos en cascada: SIGUE SIN CONFIRMAR.** El swagger no trae descripcion para `DELETE /api/rutas/{id}` ni `DELETE /api/puntos-recoleccion/{id}`. Pendiente de preguntar directamente.
@@ -322,7 +352,7 @@ Ademas, se encontraron dos hallazgos que no estaban en la lista original de preg
 - El selector de camion del Disenador esta hardcodeado (Camion 1/2/3) y no viene de `GET /api/camion/`; si se conecta a ese endpoint real, el modelo real de `Camion` no tiene un nombre simple, se identifica por `placa`/`modelo`/`tipo_camion_id`/`disponibilidad_id`.
 - Dos posibles bugs de documentacion en el swagger: `PUT /api/rutas/{id}` documenta como body `entities.UpdateEstadoCamionRequest` (de camion, no de ruta), y tanto `GET /api/rutas/` como `GET /api/camion/` documentan su respuesta 200 como `entities.EstadoCamionListResponse`. Probablemente son errores de copy-paste en las anotaciones de Go, pero conviene confirmarlo.
 
-Ver `REQUISITOS_BACKEND_MAPA.md` (documento separado, pensado para compartir directo con el equipo de backend) para el detalle completo con evidencia y la prioridad sugerida.
+Los hallazgos de backend quedan consolidados en esta seccion para evitar depender de documentos separados.
 
 ---
 
@@ -352,7 +382,7 @@ Ver `REQUISITOS_BACKEND_MAPA.md` (documento separado, pensado para compartir dir
 
 **Salvedad importante:** backend no confirma (seccion 10) que maneje un estado de publicacion de ruta. Por eso `estadoPublicacion` es **puramente en memoria del frontend, no se persiste** al guardar (`guardar()` sigue exactamente igual, via `rutasApi`) ni se manda a ningun endpoint: es una demostracion funcional del flujo completo (calcular geometria -> publicar -> bloquear si falta geometria -> despublicar al editar), lista para conectarse a un campo real de backend en cuanto se confirme que existe. La UI dice esto explicitamente ("solo en esta sesion; backend todavia no confirma si guarda este estado") para no dar a entender que una ruta "publicada" aqui ya es visible para la app movil del conductor. Probado con 7 casos (`tsc` + `assert`): `puedePublicarse` con 0/1/2+ puntos, publicar sin geometria (-> ERROR), publicar con geometria valida (-> PUBLICADA), y `volverABorrador` sin tocar los puntos.
 
-**Fase 11 - Verificacion y documentacion. [HECHO], con una salvedad de entorno.** `npx tsc -b --force` y `npm run lint` corren limpio sobre todo el proyecto (el `eslint` de este entorno de trabajo, que en sesiones anteriores se colgaba, ya funciono correctamente aqui). `npm run build` (`vite build`) y `npm test` (`vitest run`) siguen fallando con `Bus error (core dumped)` en este entorno especifico por un problema de esbuild ajeno al codigo (ya diagnosticado en sesiones previas reproduciendo el mismo error con una llamada `esbuild.transform()` trivial y no relacionada). **Accion recomendada para quien retome esto: correr `npm run build` y `npm test` en su propia maquina antes de dar por buena esta fase**, ya que aqui no se pudo confirmar. Se actualizo `MAPA-FUNCIONAMIENTO.md` con secciones nuevas para modo offline (4.1), modo detector (7.5), curvas automaticas (7.6), modo borrador (7.7), geometria vial (7.8) y publicacion (7.9), ademas de corregir referencias a archivos desactualizadas (rutas sin `ñ` que ya no coincidian con los archivos reales) y refrescar las secciones de archivos importantes, scripts, limitaciones y pendientes.
+**Fase 11 - Verificacion y documentacion. [HECHO], con una salvedad de entorno.** `npx tsc -b --force` y `npm run lint` corren limpio sobre todo el proyecto (el `eslint` de este entorno de trabajo, que en sesiones anteriores se colgaba, ya funciono correctamente aqui). `npm run build` (`vite build`) y `npm test` (`vitest run`) siguen fallando con `Bus error (core dumped)` en este entorno especifico por un problema de esbuild ajeno al codigo (ya diagnosticado en sesiones previas reproduciendo el mismo error con una llamada `esbuild.transform()` trivial y no relacionada). **Accion recomendada para quien retome esto: correr `npm run build` y `npm test` en su propia maquina antes de dar por buena esta fase**, ya que aqui no se pudo confirmar. La documentacion del mapa queda centralizada en este archivo.
 
 **Fase 12 - Conectar `puntosRecoleccionApi.ts`. [HECHO], con alcance ajustado.** Esta fase no existia todavia en este documento (se detenia en la Fase 11); se agrega aqui. El contrato de `POST /api/puntos-recoleccion/sync` sigue sin confirmar (seccion 5.4/10), asi que no se podia "conectar" a ciegas sin arriesgar romper el guardado real. Se hicieron dos cosas, separando lo seguro de lo experimental:
 
@@ -412,4 +442,4 @@ Mismo problema de entorno que la Fase 11: `npx vitest run` sigue terminando en `
 - No romper el flujo de clic libre actual mientras se construye el flujo detector ni el modo borrador.
 - No introducir dependencias nuevas (por ejemplo, librerias de mapas o de curvas) sin justificarlo primero.
 - Correr `npm run lint` y `npm run build` despues de cualquier cambio de codigo, y corregir lo que falle antes de entregar.
-- Actualizar `MAPA-FUNCIONAMIENTO.md` cuando el comportamiento real del mapa cambie, para que ese documento siga describiendo lo que existe hoy.
+- Actualizar este documento cuando el comportamiento real del mapa cambie, para que siga describiendo lo que existe hoy.

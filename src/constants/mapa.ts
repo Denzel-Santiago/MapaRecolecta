@@ -23,6 +23,11 @@ export const OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 
 export const OSM_ATTRIBUTION = "&copy; OpenStreetMap contributors";
 
+// Restriccion vial: un clic debe caer cerca de una calle conocida para poder
+// convertirse en punto de ruta. En produccion esta validacion debe venir de
+// OSRM/GraphHopper/Valhalla o de una red local completa de Suchiapa.
+export const DISTANCIA_MAXIMA_CALLE_METROS = 35;
+
 // Modo detector (ver PLAN_MAPA_COMPLETO.md, seccion 6): distancia maxima en
 // metros para considerar que un punto detectado tiene un vecino cercano.
 export const UMBRAL_VECINO_METROS = 40;

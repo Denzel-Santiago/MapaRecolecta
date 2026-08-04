@@ -2,6 +2,7 @@ import type { PuntoRuta } from "../models/rutaDiseñada";
 import { obtenerLongitudPunto } from "../models/rutaDiseñada";
 import { apiRequest } from "./api";
 import { backendToPuntoRuta, type PuntoRutaBackend } from "./rutasApi";
+import { estaModoOfflineActivo } from "./offlineMode";
 import type { PayloadSyncPuntos } from "./rutaBorradorService";
 
 export interface PuntoRecoleccionRequest {
@@ -43,6 +44,10 @@ export function puntoToBackend(punto: PuntoRuta, rutaId: number): PuntoRecolecci
 }
 
 export async function listarPuntosPorRuta(rutaId: number): Promise<PuntoRuta[]> {
+  if (estaModoOfflineActivo()) {
+    return [];
+  }
+
   const respuesta = await apiRequest<ApiListResponse<PuntoRutaBackend>>(
     `/api/puntos-recoleccion?ruta_id=${rutaId}`
   );
@@ -82,6 +87,10 @@ export async function eliminarPuntoRecoleccion(puntoId: number): Promise<void> {
 }
 
 export async function reemplazarPuntosDeRuta(rutaId: number, puntos: PuntoRuta[]): Promise<PuntoRuta[]> {
+  if (estaModoOfflineActivo()) {
+    return puntos.map((punto, index) => ({ ...punto, punto_id: punto.punto_id ?? index + 1 }));
+  }
+
   const puntosActuales = await listarPuntosPorRuta(rutaId);
 
   await Promise.all(

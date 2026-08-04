@@ -9,10 +9,10 @@ import { useRutaBorrador } from "../hooks/useRutaBorrador";
 import type { Coordenada } from "../models/geo";
 import type { DatosRutaForm, RutaDiseñada } from "../models/rutaDiseñada";
 import { puntosRutaACoordenadas } from "../models/rutaDiseñada";
-import { borradorAPuntosRuta } from "../models/rutaBorrador";
 import { crearRutaDiseñada } from "../services/rutaService";
 import { puntosRutaAConPeso } from "../services/detectorRutaService";
-import { obtenerGeometriaVial } from "../services/rutaVialService";
+import { estaModoOfflineActivo } from "../services/offlineMode";
+import { ajustarPuntoACalle, obtenerGeometriaVial } from "../services/rutaVialService";
 import { construirPayloadSync } from "../services/rutaBorradorService";
 import { sincronizarPuntosDeRuta } from "../services/puntosRecoleccionApi";
 import {
@@ -26,7 +26,6 @@ import {
   obtenerAsignacionActivaPorRuta,
 } from "../services/rutaCamionApi";
 import { reemplazarPuntosDeRuta } from "../services/puntosRecoleccionApi";
-import { guardarPuntosBorrador } from "../services/rutaBorradorService";
 import "./diseñador.css";
 
 // Fase 12 (PLAN_MAPA_COMPLETO.md): intento EXPERIMENTAL y opcional de sync
@@ -49,6 +48,10 @@ function esMismaRuta(a: RutaDiseñada, b?: RutaDiseñada): boolean {
 // dibujo libre de siempre (useRutaDiseñador), sin cambios.
 function esRutaPersistida(ruta?: RutaDiseñada): ruta is RutaDiseñada & { ruta_id: number } {
   return !!ruta && ruta.ruta_id !== null;
+}
+
+function fechaAsignacionHoy(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export default function MapaDiseñador({
@@ -89,6 +92,10 @@ export default function MapaDiseñador({
   const [geometriaOficial, setGeometriaOficial] = useState<Coordenada[] | null>(null);
   const [calculandoGeometria, setCalculandoGeometria] = useState(false);
   const [errorGeometriaVial, setErrorGeometriaVial] = useState<string | null>(null);
+  const [fuenteGeometria, setFuenteGeometria] = useState<"osrm" | "local" | null>(null);
+  const [errorAsignacion, setErrorAsignacion] = useState<string | null>(null);
+  const [errorPuntos, setErrorPuntos] = useState<string | null>(null);
+  const [perfilRuteo, setPerfilRuteo] = useState("driving");
 
   // El modo detector (ver PLAN_MAPA_COMPLETO.md, seccion 6) convive con el
   // flujo de clic libre sin reemplazarlo: ambos hooks se mantienen
@@ -97,6 +104,22 @@ export default function MapaDiseñador({
   const puntosActivos = modoDetector ? detector.puntosConectados : puntos;
   const puedeGuardarActual = modoDetector ? detector.puedeGuardar : puedeGuardar;
   const errorActivo = modoDetector ? detector.error : error;
+  const puedeFinalizarRuta = puedeGuardarActual && geometriaOficial !== null && geometriaOficial.length >= 2;
+  const totalPuntosActivos = puntosActivos.length;
+  const guiaActual =
+    camionId === null
+      ? "Selecciona un camion para empezar."
+      : totalPuntosActivos === 0
+        ? "Haz clic sobre una calle para agregar el primer punto."
+        : totalPuntosActivos === 1
+          ? "Agrega al menos un punto mas para formar una ruta."
+          : !geometriaOficial
+            ? "Calcula el trazado por calles antes de finalizar."
+            : "Ruta lista para finalizar o publicar.";
+  const descripcionPerfil =
+    perfilRuteo === "driving"
+      ? "Respeta sentidos de calle. Puede generar vueltas largas."
+      : "Prioriza cobertura corta para comparar recorridos.";
 
   // Fase 7 (seccion 5.1 y 6.6 del plan): el borrador envuelve la salida de
   // cualquiera de los dos flujos anteriores sin tocar su logica interna.
@@ -105,7 +128,7 @@ export default function MapaDiseñador({
   useEffect(() => {
     borrador.sincronizarPuntos(puntosActivos);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [puntosActivos]);
+  }, [puntosActivos, perfilRuteo]);
 
   // Fase 9: la geometria oficial calculada (si la hay) queda obsoleta en
   // cuanto los puntos de control cambian; se limpia y hay que volver a
@@ -115,6 +138,7 @@ export default function MapaDiseñador({
   // BORRADOR) hasta que se recalcule y se publique de nuevo.
   useEffect(() => {
     setGeometriaOficial(null);
+    setFuenteGeometria(null);
     setErrorGeometriaVial(null);
     if (borrador.borrador.estadoPublicacion === "PUBLICADA") {
       borrador.despublicar();
@@ -127,15 +151,62 @@ export default function MapaDiseñador({
     setErrorGeometriaVial(null);
 
     try {
-      const resultado = await obtenerGeometriaVial(puntosActivos);
+      const resultado = await obtenerGeometriaVial(puntosActivos, undefined, perfilRuteo);
       setGeometriaOficial(resultado.puntos);
+      setFuenteGeometria(resultado.origen);
     } catch (err) {
       setGeometriaOficial(null);
+      setFuenteGeometria(null);
       setErrorGeometriaVial(
         err instanceof Error ? err.message : "No se pudo calcular la geometria oficial."
       );
     } finally {
       setCalculandoGeometria(false);
+    }
+  };
+
+  const agregarPuntoVial = async (punto: Coordenada) => {
+    try {
+      const puntoSobreCalle = await ajustarPuntoACalle(punto, undefined, perfilRuteo);
+      if (modoDetector) {
+        detector.marcarCandidato(puntoSobreCalle.coordenada);
+      } else {
+        agregarPunto(puntoSobreCalle.coordenada);
+      }
+      setErrorGeometriaVial(null);
+    } catch (err) {
+      setErrorGeometriaVial(err instanceof Error ? err.message : "El punto no esta sobre una calle valida.");
+    }
+  };
+
+  const editarPuntoVial = async (indice: number, punto: Coordenada) => {
+    try {
+      const puntoSobreCalle = await ajustarPuntoACalle(punto, undefined, perfilRuteo);
+      editarPunto(indice, puntoSobreCalle.coordenada);
+      setErrorGeometriaVial(null);
+    } catch (err) {
+      setErrorGeometriaVial(err instanceof Error ? err.message : "El punto no esta sobre una calle valida.");
+    }
+  };
+
+  const persistirAsignacionCamion = async (rutaId: number, camionIdAsignado: number): Promise<string | null> => {
+    if (estaModoOfflineActivo()) {
+      return null;
+    }
+
+    try {
+      const fecha = fechaAsignacionHoy();
+      const asignacionActual = await obtenerAsignacionActivaPorRuta(rutaId);
+
+      if (asignacionActual?.ruta_camion_id) {
+        await actualizarAsignacion(asignacionActual.ruta_camion_id, rutaId, camionIdAsignado, fecha);
+      } else {
+        await crearAsignacion(rutaId, camionIdAsignado, fecha);
+      }
+
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : "No se pudo asignar el camion a la ruta.";
     }
   };
 
@@ -149,6 +220,10 @@ export default function MapaDiseñador({
     detector.reemplazarConectados(rutaExistente ? puntosRutaAConPeso(rutaExistente.puntos) : []);
     borrador.cargarDesdeRuta(rutaExistente);
     setErrorSyncPuntos(null);
+    setErrorAsignacion(null);
+    setErrorPuntos(null);
+    setGeometriaOficial(null);
+    setFuenteGeometria(null);
 
     if (rutaExistente?.ruta_id !== null && rutaExistente?.ruta_id !== undefined) {
       seleccionarRuta(rutaExistente.ruta_id);
@@ -162,14 +237,13 @@ export default function MapaDiseñador({
     detector.reemplazarConectados(puntosRutaAConPeso(ruta.puntos));
     borrador.cargarDesdeRuta(ruta);
     setErrorSyncPuntos(null);
+    setErrorAsignacion(null);
+    setErrorPuntos(null);
+    setGeometriaOficial(null);
+    setFuenteGeometria(null);
 
     if (esRutaPersistida(ruta)) {
-      rutaBorrador.iniciarDesdeRuta(ruta);
-      dibujoLibre.reemplazarPuntos([]);
       seleccionarRuta(ruta.ruta_id);
-    } else {
-      rutaBorrador.limpiar();
-      dibujoLibre.reemplazarPuntos(puntosRutaACoordenadas(ruta.puntos));
     }
   };
 
@@ -178,6 +252,10 @@ export default function MapaDiseñador({
     detector.limpiarDetector();
     borrador.limpiarBorrador();
     setErrorSyncPuntos(null);
+    setErrorAsignacion(null);
+    setErrorPuntos(null);
+    setGeometriaOficial(null);
+    setFuenteGeometria(null);
     setRutaEditada(undefined);
     setCamionId(null);
     setMostrarSeleccionCamion(false);
@@ -190,6 +268,11 @@ export default function MapaDiseñador({
   const guardar = async (datos: DatosRutaForm) => {
     if (camionId === null) return;
 
+    if (!geometriaOficial || geometriaOficial.length < 2) {
+      setErrorGeometriaVial("Calcula la geometria oficial por calles antes de finalizar la ruta.");
+      return;
+    }
+
     const existente = obtenerRutaPorCamion(camionId);
     if (
       existente &&
@@ -200,10 +283,11 @@ export default function MapaDiseñador({
     }
 
     const rutaBase = crearRutaDiseñada(camionId, datos, puntosActivos, rutaEditada?.ruta_id ?? null);
+    const modoBorrador = esRutaPersistida(rutaEditada);
     const rutaLocal = {
       ...rutaBase,
-      puntos: puntosLocales,
       color: rutaEditada?.color ?? rutaBase.color,
+      geometria: geometriaOficial,
     };
 
     // Se arma el payload de sync ANTES de guardar (con el ruta_id que el
@@ -233,6 +317,7 @@ export default function MapaDiseñador({
       color: rutaGuardada.color ?? rutaLocal.color,
       camion_id: camionId,
       visible: true,
+      geometria: geometriaOficial,
     };
 
     setErrorAsignacion(null);
@@ -249,10 +334,7 @@ export default function MapaDiseñador({
     setErrorPuntos(null);
     if (rutaFinal.ruta_id !== null) {
       try {
-        const puntosPersistidos =
-          modoBorrador && rutaBorrador.borrador
-            ? await guardarPuntosBorrador({ ...rutaBorrador.borrador, ruta_id: rutaFinal.ruta_id })
-            : await reemplazarPuntosDeRuta(rutaFinal.ruta_id, rutaFinal.puntos);
+        const puntosPersistidos = await reemplazarPuntosDeRuta(rutaFinal.ruta_id, rutaFinal.puntos);
 
         if (puntosPersistidos.length > 0) {
           rutaFinal = { ...rutaFinal, puntos: puntosPersistidos };
@@ -280,7 +362,7 @@ export default function MapaDiseñador({
       // ruta_id antes de este guardado): se reinicia el borrador desde
       // el estado final confirmado por backend, para que la siguiente
       // edicion parta de datos frescos y con los punto_id reales.
-      rutaBorrador.iniciarDesdeRuta(rutaFinal);
+      borrador.cargarDesdeRuta(rutaFinal);
     }
 
     if (payloadSyncPendiente) {
@@ -307,6 +389,10 @@ export default function MapaDiseñador({
       detector.limpiarDetector();
       borrador.limpiarBorrador();
       setErrorSyncPuntos(null);
+      setErrorAsignacion(null);
+      setErrorPuntos(null);
+      setGeometriaOficial(null);
+      setFuenteGeometria(null);
       setRutaEditada(undefined);
       setCamionId(null);
       setMostrarSeleccionCamion(true);
@@ -321,6 +407,10 @@ export default function MapaDiseñador({
     detector.limpiarDetector();
     borrador.limpiarBorrador();
     setErrorSyncPuntos(null);
+    setErrorAsignacion(null);
+    setErrorPuntos(null);
+    setGeometriaOficial(null);
+    setFuenteGeometria(null);
   };
 
   const alternarModoDetector = () => {
@@ -330,14 +420,30 @@ export default function MapaDiseñador({
   return (
     <div style={{ height: "100vh", width: "100%", position: "relative" }}>
       <div className="panel-diseñador">
-        <h3>Diseñador de Rutas</h3>
-        <p>{camionId ? `Camión ${camionId}` : "Seleccione un camión"}</p>
+        <div className="panel-header">
+          <div>
+            <p className="panel-kicker">Recolecta</p>
+            <h3>Diseñador</h3>
+          </div>
+          <span className={camionId ? "estado-chip activo" : "estado-chip"}>{camionId ? `Camion ${camionId}` : "Sin camion"}</span>
+        </div>
+
+        <div className="guia-uso" role="status">
+          <strong>Siguiente paso</strong>
+          <span>{guiaActual}</span>
+        </div>
+
+        <div className="metricas-ruta">
+          <span>{totalPuntosActivos} puntos</span>
+          <span>{geometriaOficial ? "Trazado listo" : "Sin trazado"}</span>
+        </div>
+
         {cargando && <p className="texto-estado">Cargando rutas...</p>}
         {errorRutas && <p className="texto-error">{errorRutas}</p>}
         {errorActivo && <p className="texto-error">{errorActivo}</p>}
         {modoDetector && (
           <p className="texto-estado">
-            Modo detector activo: clic para marcar un punto, "Detectar punto" para confirmarlo.
+            Modo detector: marca un punto y confirmalo para conectarlo.
             {detector.pendientes.length > 0 &&
               ` ${detector.pendientes.length} punto(s) sin conectar todavia.`}
           </p>
@@ -346,8 +452,15 @@ export default function MapaDiseñador({
           <p className="texto-estado">Hay cambios sin sincronizar contra backend (borrador).</p>
         )}
         {errorSyncPuntos && <p className="texto-error">{errorSyncPuntos}</p>}
+        {errorAsignacion && <p className="texto-error">Ruta guardada, pero fallo la asignacion: {errorAsignacion}</p>}
+        {errorPuntos && <p className="texto-error">{errorPuntos}</p>}
         {errorGeometriaVial && <p className="texto-error">{errorGeometriaVial}</p>}
-        {geometriaOficial && <p className="texto-estado">Mostrando geometria oficial por calles.</p>}
+        {geometriaOficial && (
+          <p className="texto-estado">
+            Mostrando geometria oficial por calles
+            {fuenteGeometria === "local" ? " (modo local de prueba)." : "."}
+          </p>
+        )}
         {camionId !== null && (
           <p className="texto-estado">
             Estado de publicacion: {borrador.borrador.estadoPublicacion}
@@ -359,7 +472,7 @@ export default function MapaDiseñador({
         )}
 
         <label className="selector-rutas">
-          Ver rutas
+          Rutas visibles
           <select
             value={rutaSeleccionadaId ?? "todas"}
             onChange={(event) => {
@@ -383,16 +496,17 @@ export default function MapaDiseñador({
         </label>
 
         <div className="acciones">
-          <button onClick={alternarModoDetector} disabled={!camionId}>
-            {modoDetector ? "Modo detector (activo)" : "Modo detector"}
+          <p className="grupo-acciones-titulo">Edicion</p>
+          <button onClick={alternarModoDetector} disabled={!camionId} title="Cambia entre agregar puntos directo o confirmar cada punto antes de conectarlo.">
+            {modoDetector ? "Detector activo" : "Usar detector"}
           </button>
           {modoDetector ? (
             <>
               <button onClick={detector.detectarPunto} disabled={!camionId || !detector.candidato}>
-                Detectar punto
+                Confirmar punto
               </button>
               <button onClick={detector.cancelarCandidato} disabled={!detector.candidato}>
-                Cancelar candidato
+                Cancelar
               </button>
               <button onClick={detector.limpiarDetector} disabled={!camionId || detector.conectados.length === 0}>
                 Limpiar
@@ -408,17 +522,35 @@ export default function MapaDiseñador({
               </button>
             </>
           )}
+          <label className="selector-rutas">
+            Tipo de trazado
+            <select
+              value={perfilRuteo}
+              onChange={(event) => setPerfilRuteo(event.target.value)}
+              disabled={!camionId || calculandoGeometria}
+            >
+              <option value="driving">Vehiculo</option>
+              <option value="foot">Cobertura corta</option>
+            </select>
+            <span className="texto-ayuda">{descripcionPerfil}</span>
+          </label>
+          <p className="grupo-acciones-titulo">Ruta</p>
           <button
             onClick={calcularGeometriaOficial}
             disabled={!camionId || puntosActivos.length < 2 || calculandoGeometria}
+            className="boton-primario"
           >
-            {calculandoGeometria ? "Calculando geometria..." : "Calcular geometria oficial"}
+            {calculandoGeometria ? "Calculando..." : "Calcular trazado"}
           </button>
-          <button onClick={() => setMostrarFormulario(true)} disabled={!camionId || !puedeGuardarActual}>
-            Finalizar Ruta
+          <button
+            onClick={() => setMostrarFormulario(true)}
+            disabled={!camionId || !puedeFinalizarRuta}
+            title={!puedeFinalizarRuta ? "Calcula la geometria oficial por calles antes de finalizar" : undefined}
+          >
+            Guardar ruta
           </button>
           {borrador.borrador.estadoPublicacion === "PUBLICADA" ? (
-            <button onClick={borrador.despublicar}>Quitar publicacion</button>
+            <button onClick={borrador.despublicar}>Despublicar</button>
           ) : (
             <button
               onClick={() => borrador.publicar(geometriaOficial)}
@@ -435,11 +567,11 @@ export default function MapaDiseñador({
                     : undefined
               }
             >
-              Publicar ruta
+              Publicar
             </button>
           )}
-          {rutaEditada && <button onClick={() => setMostrarFormulario(true)}>Editar formulario</button>}
-          <button onClick={cambiarCamion}>Cambiar camión</button>
+          {rutaEditada && <button onClick={() => setMostrarFormulario(true)}>Editar datos</button>}
+          <button onClick={cambiarCamion}>Cambiar camion</button>
         </div>
       </div>
 
@@ -448,8 +580,8 @@ export default function MapaDiseñador({
         puntos={puntos}
         rutasVisibles={rutasVisibles}
         rutaEditadaId={rutaEditada?.ruta_id}
-        onAddPoint={modoDetector ? detector.marcarCandidato : agregarPunto}
-        onEditPoint={editarPunto}
+        onAddPoint={agregarPuntoVial}
+        onEditPoint={editarPuntoVial}
         puedeDibujar={camionId !== null}
         modoDetector={modoDetector}
         puntosConectadosDetector={detector.puntosConectados}

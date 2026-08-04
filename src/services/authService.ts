@@ -1,5 +1,10 @@
 import { apiRequest, clearToken, getToken, setToken } from "./api";
-import { OFFLINE_CREDENCIALES, OFFLINE_MODE, construirTokenOffline } from "./offlineMode";
+import {
+  OFFLINE_CREDENCIALES,
+  activarModoOffline,
+  construirTokenOffline,
+  estaModoOfflineActivo,
+} from "./offlineMode";
 
 export const ROLES = {
   ADMIN: 1,
@@ -88,7 +93,7 @@ export function canAccessDesigner(roleId: number | null): boolean {
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {
-  if (OFFLINE_MODE) {
+  if (estaModoOfflineActivo()) {
     const coincide =
       email.trim().toLowerCase() === OFFLINE_CREDENCIALES.email &&
       password === OFFLINE_CREDENCIALES.password;
@@ -130,6 +135,19 @@ export async function login(email: string, password: string): Promise<AuthSessio
   }
 
   return session;
+}
+
+export function loginOffline(): AuthSession {
+  activarModoOffline();
+  setToken(construirTokenOffline());
+
+  const sesionOffline = getAuthSession();
+
+  if (!sesionOffline) {
+    throw new Error("No se pudo crear la sesion offline.");
+  }
+
+  return sesionOffline;
 }
 
 export function logout(): void {

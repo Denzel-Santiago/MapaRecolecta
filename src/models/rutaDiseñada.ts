@@ -4,7 +4,7 @@ export interface PuntoRuta {
   punto_id?: number | null;
   // string: asi lo espera el backend real (ver PLAN_DE_SEGUIMIENTO.md
   // seccion 5). El orden para ordenar/sincronizar se maneja con `orden`.
-  cp?: string;
+  cp?: string | number;
   orden: number;
   lat: number;
   lng?: number;
@@ -21,6 +21,9 @@ export interface RutaDiseñada {
   color?: string;
   visible?: boolean;
   puntos: PuntoRuta[];
+  // Camino final por calles, listo para monitoreo movil. Los puntos son solo
+  // controles; esta geometria es la ruta que debe seguir/consumir el camion.
+  geometria?: Coordenada[];
 }
 
 export interface DatosRutaForm {
