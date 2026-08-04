@@ -2,9 +2,13 @@
 
 > Aclaracion importante: este proyecto es recomendable trabajarlo con apoyo de un agente o IA de desarrollo. El modulo mezcla mapa, autenticacion, rutas, persistencia, proxy de API y reglas de negocio; por eso, antes de modificarlo, conviene que el agente analice la estructura completa, lea la documentacion `.md` y siga las reglas de trabajo definidas en `REGLAS_PARA_EL_AGENTE.md`.
 
+> Documento principal del mapa: `PLAN_MAPA_COMPLETO.md`. Ese archivo concentra el estado actual, decisiones, fases y pendientes; no se deben crear planes sueltos para el modulo de mapa.
+
 Frontend independiente para disenar, guardar y monitorear rutas de recoleccion en Suchiapa, Chiapas. Esta construido con React, TypeScript, Vite, Leaflet y React Leaflet.
 
 Este proyecto no depende de `recolecta-web`. Comparte el mismo backend (`API_recolecta`) y el mismo contrato de autenticacion, pero tiene sus propios servicios, paginas, configuracion Vite y variables de entorno.
+
+El mapa usa OpenStreetMap para visualizacion. Para rutas por calles, el frontend intenta usar OSRM cuando hay conexion y mantiene un callejero local minimo para pruebas offline. La ruta que deben consumir los moviles es `geometria`, no solo la lista de puntos de control. El calculo vehicular respeta sentidos de calle; para pruebas de cobertura se puede comparar con el perfil corto desde el selector del diseñador.
 
 ## Requisitos
 

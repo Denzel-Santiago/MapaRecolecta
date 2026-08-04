@@ -10,7 +10,6 @@ import "leaflet/dist/leaflet.css";
 import type { Coordenada } from "../models/geo";
 import { puntosRutaACoordenadas, type RutaDiseñada } from "../models/rutaDiseñada";
 import ClickParaPuntos from "./ClickParaPuntos";
-import { generarGeometriaVisual } from "../services/mapaGeoService";
 import {
   MAP_BOUNDS_VISCOSITY,
   MAP_INITIAL_ZOOM,
@@ -38,8 +37,8 @@ export default function MapaDiseñadorView({
   puntos: Coordenada[];
   rutasVisibles: RutaDiseñada[];
   rutaEditadaId?: number | null;
-  onAddPoint: (punto: Coordenada) => void;
-  onEditPoint: (indice: number, punto: Coordenada) => void;
+  onAddPoint: (punto: Coordenada) => void | Promise<void>;
+  onEditPoint: (indice: number, punto: Coordenada) => void | Promise<void>;
   puedeDibujar: boolean;
   modoDetector: boolean;
   puntosConectadosDetector: Coordenada[];
@@ -70,13 +69,14 @@ export default function MapaDiseñadorView({
         .filter((ruta) => ruta.ruta_id !== rutaEditadaId)
         .map((ruta) => {
           const coordenadas = puntosRutaACoordenadas(ruta.puntos);
+          const geometriaRuta = ruta.geometria && ruta.geometria.length >= 2 ? ruta.geometria : null;
           const color = ruta.color ?? "#2563eb";
 
           return (
             <Fragment key={ruta.ruta_id ?? `camion-${ruta.camion_id}`}>
-              {coordenadas.length >= 2 && (
+              {geometriaRuta && (
                 <Polyline
-                  positions={generarGeometriaVisual(coordenadas)}
+                  positions={geometriaRuta}
                   pathOptions={{ color, weight: 4, opacity: 0.75 }}
                 />
               )}
@@ -100,9 +100,13 @@ export default function MapaDiseñadorView({
           {puntos.length >= 2 && (
             <Polyline
               positions={
-                geometriaOficial && geometriaOficial.length >= 2 ? geometriaOficial : generarGeometriaVisual(puntos)
+                geometriaOficial && geometriaOficial.length >= 2 ? geometriaOficial : puntos
               }
-              pathOptions={{ color: "#111827", weight: 5 }}
+              pathOptions={{
+                color: geometriaOficial && geometriaOficial.length >= 2 ? "#111827" : "#ef4444",
+                weight: 5,
+                dashArray: geometriaOficial && geometriaOficial.length >= 2 ? undefined : "6 6",
+              }}
             />
           )}
 
@@ -130,9 +134,13 @@ export default function MapaDiseñadorView({
               positions={
                 geometriaOficial && geometriaOficial.length >= 2
                   ? geometriaOficial
-                  : generarGeometriaVisual(puntosConectadosDetector)
+                  : puntosConectadosDetector
               }
-              pathOptions={{ color: "#7c3aed", weight: 5 }}
+              pathOptions={{
+                color: geometriaOficial && geometriaOficial.length >= 2 ? "#7c3aed" : "#ef4444",
+                weight: 5,
+                dashArray: geometriaOficial && geometriaOficial.length >= 2 ? undefined : "6 6",
+              }}
             />
           )}
           {puntosConectadosDetector.map((punto, index) => (

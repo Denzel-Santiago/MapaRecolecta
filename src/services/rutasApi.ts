@@ -3,12 +3,12 @@ import { obtenerLongitudPunto } from "../models/rutaDiseñada";
 import { obtenerColorCamion } from "../utils/ColoresCamion";
 import { apiRequest } from "./api";
 import {
-  OFFLINE_MODE,
   offlineActualizarRuta,
   offlineEliminarRuta,
   offlineGuardarRuta,
   offlineListarRutas,
   offlineObtenerRuta,
+  estaModoOfflineActivo,
 } from "./offlineMode";
 
 export interface PuntoRutaBackend {
@@ -82,7 +82,7 @@ function rutaOfflineComoBackend(ruta: RutaDiseñada): RutaBackend {
     ruta_id: ruta.ruta_id ?? undefined,
     nombre: ruta.nombre,
     descripcion: ruta.descripcion,
-    camion_id: ruta.camion_id,
+    camion_id: ruta.camion_id ?? undefined,
     color: ruta.color,
     visible: ruta.visible,
     puntos: ruta.puntos.map((punto) => ({
@@ -150,7 +150,7 @@ export function backendToRutaDiseñada(ruta: RutaBackend): RutaDiseñada {
 }
 
 export async function listarRutas(): Promise<RutaDiseñada[]> {
-  if (OFFLINE_MODE) {
+  if (estaModoOfflineActivo()) {
     return offlineListarRutas();
   }
 
@@ -159,7 +159,7 @@ export async function listarRutas(): Promise<RutaDiseñada[]> {
 }
 
 export async function obtenerRuta(rutaId: number): Promise<RutaDiseñada> {
-  if (OFFLINE_MODE) {
+  if (estaModoOfflineActivo()) {
     return offlineObtenerRuta(rutaId);
   }
 
@@ -168,7 +168,7 @@ export async function obtenerRuta(rutaId: number): Promise<RutaDiseñada> {
 }
 
 export async function guardarRuta(ruta: RutaDiseñada): Promise<CrearRutaResponse> {
-  if (OFFLINE_MODE) {
+  if (estaModoOfflineActivo()) {
     return { success: true, data: rutaOfflineComoBackend(offlineGuardarRuta(ruta)) };
   }
 
@@ -185,7 +185,7 @@ export async function actualizarRuta(ruta: RutaDiseñada): Promise<RutaDiseñada
     throw new Error("No se puede actualizar una ruta sin ruta_id.");
   }
 
-  if (OFFLINE_MODE) {
+  if (estaModoOfflineActivo()) {
     return offlineActualizarRuta(ruta);
   }
 
@@ -198,7 +198,7 @@ export async function actualizarRuta(ruta: RutaDiseñada): Promise<RutaDiseñada
 }
 
 export async function eliminarRutaBackend(rutaId: number): Promise<void> {
-  if (OFFLINE_MODE) {
+  if (estaModoOfflineActivo()) {
     offlineEliminarRuta(rutaId);
     return;
   }

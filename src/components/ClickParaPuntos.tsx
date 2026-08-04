@@ -4,7 +4,7 @@ import type { Coordenada } from "../models/geo";
 export default function ClickParaPuntos({
   onAddPoint,
 }: {
-  onAddPoint: (p: Coordenada) => void;
+  onAddPoint: (p: Coordenada) => void | Promise<void>;
 }) {
   useMapEvents({
     click(e) {

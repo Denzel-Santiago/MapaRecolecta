@@ -7,11 +7,9 @@ Este documento define como debe trabajar un agente o IA de desarrollo dentro de 
 Antes de implementar cualquier cambio, el agente debe revisar:
 
 1. `README.md`
-2. `MAPA-FUNCIONAMIENTO.md`
-3. `PLAN_DE_SEGUIMIENTO.md`
-4. `PLAN_ADAPTACION_ADMIN.md`
-5. Este archivo: `REGLAS_PARA_EL_AGENTE.md`
-6. Los archivos directamente relacionados con la tarea solicitada
+2. `PLAN_MAPA_COMPLETO.md`
+3. Este archivo: `REGLAS_PARA_EL_AGENTE.md`
+4. Los archivos directamente relacionados con la tarea solicitada
 
 El agente no debe asumir que el README contiene todo el estado actual. Debe contrastar la documentacion con el codigo real.
 
@@ -40,7 +38,7 @@ El plan debe indicar:
 - que se debe verificar al final;
 - que queda pendiente.
 
-Cuando el cambio este relacionado con rutas, puntos, mapa, backend o multiples vistas, el agente debe actualizar `PLAN_DE_SEGUIMIENTO.md` si el estado del proyecto cambia.
+Cuando el cambio este relacionado con rutas, puntos, mapa, backend o multiples vistas, el agente debe actualizar `PLAN_MAPA_COMPLETO.md` si el estado del proyecto cambia.
 
 ## 4. Reglas sobre OpenStreetMap y mapa
 
@@ -191,9 +189,7 @@ Actualizar documentacion cuando cambie:
 Documentos importantes:
 
 - `README.md`: guia general del proyecto;
-- `MAPA-FUNCIONAMIENTO.md`: explicacion funcional y tecnica del mapa;
-- `PLAN_DE_SEGUIMIENTO.md`: estado del trabajo y pendientes;
-- `PLAN_ADAPTACION_ADMIN.md`: plan para integrar el plan obligatorio del administrador sin romper la logica actual;
+- `PLAN_MAPA_COMPLETO.md`: documento unico de estado, decisiones, fases y pendientes del mapa;
 - `REGLAS_PARA_EL_AGENTE.md`: reglas para futuros agentes.
 
 ## 12. Manejo de cambios existentes

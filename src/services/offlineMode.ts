@@ -2,15 +2,39 @@ import type { PuntoRuta, RutaDiseñada } from "../models/rutaDiseñada";
 import { obtenerColorCamion } from "../utils/ColoresCamion";
 
 // Modo offline: permite usar el mapa completo (login, Diseñador, Monitoreo)
-// sin backend, para pruebas internas o revisar cambios. Ver PLAN_MAPA_COMPLETO.md,
-// sección 0. Apagado por defecto; no afecta el flujo real contra la API.
+// sin backend, para pruebas internas o revisar cambios. Puede venir forzado
+// por .env o activarse desde la pantalla de login.
 
-export const OFFLINE_MODE = import.meta.env.VITE_OFFLINE_MODE === "true";
+const OFFLINE_MODE_STORAGE_KEY = "recolecta_offline_mode";
+
+function leerOfflineStorage(): boolean {
+  try {
+    return localStorage.getItem(OFFLINE_MODE_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function estaModoOfflineActivo(): boolean {
+  return import.meta.env.VITE_OFFLINE_MODE === "true" || leerOfflineStorage();
+}
+
+export const OFFLINE_MODE = estaModoOfflineActivo();
 
 export const OFFLINE_CREDENCIALES = {
   email: "offline@recolecta.local",
   password: "offline123",
 };
+
+export function activarModoOffline(): void {
+  localStorage.setItem(OFFLINE_MODE_STORAGE_KEY, "true");
+}
+
+export function desactivarModoOffline(): void {
+  if (import.meta.env.VITE_OFFLINE_MODE !== "true") {
+    localStorage.removeItem(OFFLINE_MODE_STORAGE_KEY);
+  }
+}
 
 function base64UrlEncode(valor: string): string {
   return btoa(valor).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -74,7 +98,11 @@ let rutasOffline: RutaDiseñada[] = rutasDeEjemplo();
 let siguienteRutaIdOffline = 1003;
 
 export function offlineListarRutas(): RutaDiseñada[] {
-  return rutasOffline.map((ruta) => ({ ...ruta, puntos: clonarPuntos(ruta.puntos) }));
+  return rutasOffline.map((ruta) => ({
+    ...ruta,
+    puntos: clonarPuntos(ruta.puntos),
+    geometria: ruta.geometria ? [...ruta.geometria] : undefined,
+  }));
 }
 
 export function offlineObtenerRuta(rutaId: number): RutaDiseñada {
@@ -84,7 +112,11 @@ export function offlineObtenerRuta(rutaId: number): RutaDiseñada {
     throw new Error(`No existe la ruta offline ${rutaId}.`);
   }
 
-  return { ...ruta, puntos: clonarPuntos(ruta.puntos) };
+  return {
+    ...ruta,
+    puntos: clonarPuntos(ruta.puntos),
+    geometria: ruta.geometria ? [...ruta.geometria] : undefined,
+  };
 }
 
 export function offlineGuardarRuta(ruta: RutaDiseñada): RutaDiseñada {

@@ -14,7 +14,7 @@ export type EstadoPublicacionRuta = "BORRADOR" | "VALIDANDO" | "VALIDA" | "ERROR
 export interface PuntoBorrador {
   punto_id: number | string;
   ruta_id: number;
-  cp: number;
+  cp: number | string;
   lat: number;
   lon: number;
   orden: number;
@@ -25,7 +25,7 @@ export interface RutaBorrador {
   ruta_id: number | null;
   nombre: string;
   descripcion: string;
-  camion_id: number;
+  camion_id: number | null;
   color?: string;
   puntos: PuntoBorrador[];
   estadoPublicacion: EstadoPublicacionRuta;
